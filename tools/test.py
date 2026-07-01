@@ -72,6 +72,35 @@ def check_contains(label: str, needle_path: Path, haystack: str) -> list[str]:
     ]
 
 
+def check_not_contains(label: str, needle_path: Path, haystack: str) -> list[str]:
+    if not needle_path.exists():
+        return []
+    needle = needle_path.read_text().rstrip("\n")
+    if needle not in haystack:
+        return []
+    return [
+        f"{label} contained forbidden text",
+        "forbidden:",
+        needle,
+        "actual:",
+        haystack,
+    ]
+
+
+def check_assembly_expectations(test: Path, assembly_path: Path) -> list[str]:
+    assembly = assembly_path.read_text()
+    failures = []
+    failures.extend(
+        check_contains("assembly", test / "assembly_contains.txt", assembly)
+    )
+    failures.extend(
+        check_not_contains(
+            "assembly", test / "assembly_not_contains.txt", assembly
+        )
+    )
+    return failures
+
+
 def discover(category: str) -> list[Path]:
     directory = TEST_DIR / category
     if not directory.exists():
@@ -104,6 +133,9 @@ def validate_run_test(test: Path, work_dir: Path) -> list[str]:
     compiled = compile_source(test, assembly)
     if compiled.returncode != 0:
         return ["compiler failed", compiled.stdout, compiled.stderr]
+    failures = check_assembly_expectations(test, assembly)
+    if failures:
+        return failures
 
     assembled = assemble(test, assembly, executable)
     if assembled.returncode != 0:
@@ -126,10 +158,11 @@ def validate_run_test(test: Path, work_dir: Path) -> list[str]:
 
 
 def validate_compile_only_test(test: Path, work_dir: Path) -> list[str]:
-    compiled = compile_source(test, work_dir / "program.s")
+    assembly = work_dir / "program.s"
+    compiled = compile_source(test, assembly)
     if compiled.returncode != 0:
         return ["compiler failed", compiled.stdout, compiled.stderr]
-    return []
+    return check_assembly_expectations(test, assembly)
 
 
 def validate_compile_fail_test(test: Path, work_dir: Path) -> list[str]:

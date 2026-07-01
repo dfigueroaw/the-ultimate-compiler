@@ -1,3 +1,4 @@
+#include "../include/constant_folder.h"
 #include "../include/visitor_utils.h"
 
 #include <algorithm>
@@ -100,6 +101,7 @@ int GenCodeVisitor::storeTarget(const LValue &lv) {
 
 int GenCodeVisitor::generate(Program *program) {
   const SemanticInfo semantics = typeChecker.analyze(program);
+  foldConstants(program, semantics);
   functionFrameBytes = semantics.frameBytes;
   structInfos = semantics.structs;
   functionReturnTypes = semantics.functionReturns;
