@@ -203,6 +203,36 @@ private:
     if (!binary)
       return;
 
+    if (binary->op == AND_OP && isLiteral(binary->left.get(), 0)) {
+      replaceWithLiteralIfSameType(expression, 0);
+      return;
+    }
+
+    if (binary->op == OR_OP && isNonzeroLiteral(binary->left.get())) {
+      replaceWithLiteralIfSameType(expression, 1);
+      return;
+    }
+
+    if (binary->op == AND_OP && isNonzeroLiteral(binary->left.get())) {
+      replaceWithBooleanComparison(expression, binary->right);
+      return;
+    }
+
+    if (binary->op == OR_OP && isLiteral(binary->left.get(), 0)) {
+      replaceWithBooleanComparison(expression, binary->right);
+      return;
+    }
+
+    if (binary->op == AND_OP && isNonzeroLiteral(binary->right.get())) {
+      replaceWithBooleanComparison(expression, binary->left);
+      return;
+    }
+
+    if (binary->op == OR_OP && isLiteral(binary->right.get(), 0)) {
+      replaceWithBooleanComparison(expression, binary->left);
+      return;
+    }
+
     if ((binary->op == PLUS_OP || binary->op == MUL_OP) &&
         isLiteral(binary->left.get(), identityValue(binary->op))) {
       replaceWithChildIfSameType(expression, binary->right);
@@ -258,11 +288,38 @@ private:
     return number && number->value == value;
   }
 
+  bool isNonzeroLiteral(Expression *expression) const {
+    auto *number = dynamic_cast<NumberExpression *>(expression);
+    return number && number->value != 0;
+  }
+
+  void replaceWithLiteralIfSameType(std::unique_ptr<Expression> &expression,
+                                    std::int64_t value) {
+    auto replacement = std::make_unique<NumberExpression>(value);
+    if (!sameExpressionType(expression.get(), replacement.get()))
+      return;
+    expression = std::move(replacement);
+  }
+
   void replaceWithChildIfSameType(std::unique_ptr<Expression> &expression,
                                   std::unique_ptr<Expression> &child) {
     if (!sameExpressionType(expression.get(), child.get()))
       return;
     expression = std::move(child);
+  }
+
+  void replaceWithBooleanComparison(std::unique_ptr<Expression> &expression,
+                                    std::unique_ptr<Expression> &child) {
+    const TypeInfo originalType = expressionType(expression.get());
+    const TypeInfo childType = expressionType(child.get());
+    const TypeInfo zeroType = TypeInfo{"int", 0, {}};
+    const TypeInfo replacementType =
+        analyzeBinary(NE_OP, childType, zeroType, false, true).result;
+    if (!originalType.same(replacementType.decayed()))
+      return;
+    auto replacement = std::make_unique<BinaryExpression>(
+        std::move(child), std::make_unique<NumberExpression>(0), NE_OP);
+    expression = std::move(replacement);
   }
 
   std::optional<ConstantValue> binaryValue(BinaryOp op, std::int64_t left,
@@ -336,12 +393,14 @@ private:
   }
 
   bool sameExpressionType(Expression *original, Expression *replacement) const {
+    return expressionType(original).same(expressionType(replacement));
+  }
+
+  TypeInfo expressionType(Expression *expression) const {
     auto resolver = expressionTypeResolver();
-    const TypeInfo originalType =
-        isLvalueExpression(original) ? resolver.lvalue(original).decayed()
-                                     : resolver.expression(original).decayed();
-    const TypeInfo replacementType = resolver.expression(replacement).decayed();
-    return originalType.same(replacementType);
+    if (isLvalueExpression(expression))
+      return resolver.lvalue(expression).decayed();
+    return resolver.expression(expression).decayed();
   }
 };
 } // namespace
