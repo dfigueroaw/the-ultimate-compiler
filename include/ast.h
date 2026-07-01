@@ -267,9 +267,10 @@ public:
 
 class CaseStatement {
 public:
-  int value;
+  std::unique_ptr<Expression> expression;
+  std::int64_t value = 0;
   std::list<std::unique_ptr<Statement>> body;
-  explicit CaseStatement(int value) : value(value) {}
+  explicit CaseStatement(std::unique_ptr<Expression> expression);
   ~CaseStatement() = default;
 };
 

@@ -14,10 +14,14 @@ bool isBuiltinType(const std::string &type) {
 }
 
 std::optional<std::size_t> constSize(Expression *exp) {
-  auto *number = dynamic_cast<NumberExpression *>(exp);
-  if (!number || number->value <= 0)
+  try {
+    const auto value = evaluateConstantInt(exp);
+    if (value <= 0)
+      return std::nullopt;
+    return static_cast<std::size_t>(value);
+  } catch (...) {
     return std::nullopt;
-  return static_cast<std::size_t>(number->value);
+  }
 }
 
 std::vector<std::size_t>

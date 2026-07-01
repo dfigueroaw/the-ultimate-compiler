@@ -87,4 +87,7 @@ DoWhileStatement::~DoWhileStatement() = default;
 SwitchStatement::SwitchStatement(std::unique_ptr<Expression> expr)
     : expression(std::move(expr)) {}
 
+CaseStatement::CaseStatement(std::unique_ptr<Expression> expr)
+    : expression(std::move(expr)) {}
+
 bool FunctionDeclaration::hasBody() const { return body != nullptr; }

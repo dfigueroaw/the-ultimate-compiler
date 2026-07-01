@@ -560,14 +560,7 @@ std::unique_ptr<Statement> Parser::parseStm() {
     expect(Token::LBRACE);
 
     while (match(Token::CASE)) {
-      int sign = 1;
-      if (match(Token::MINUS))
-        sign = -1;
-      if (!match(Token::NUM))
-        error("número después de case");
-
-      auto caseStatement = std::make_unique<CaseStatement>(
-          static_cast<int>(sign * std::stoll(previous->text)));
+      auto caseStatement = std::make_unique<CaseStatement>(parseCE());
       expect(Token::COLON);
       auto isCaseEnd = [&]() {
         return check(Token::CASE) || check(Token::DEFAULT) ||

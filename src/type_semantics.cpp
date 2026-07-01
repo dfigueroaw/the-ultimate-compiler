@@ -208,3 +208,77 @@ BinarySemantics analyzeBinary(BinaryOp op, const TypeInfo &left,
   semantics.integerArithmetic = true;
   return semantics;
 }
+
+std::int64_t evaluateConstantInt(
+    Expression *exp,
+    const std::unordered_map<std::string, StructInfo> *structInfos) {
+  if (auto *num = dynamic_cast<NumberExpression *>(exp))
+    return num->value;
+
+  if (auto *unary = dynamic_cast<UnaryExpression *>(exp)) {
+    const auto inner = evaluateConstantInt(unary->operand.get(), structInfos);
+    if (unary->op == NEG_OP)
+      return -inner;
+    if (unary->op == NOT_OP)
+      return !inner;
+    throw std::runtime_error(
+        "[Constant] Operador unario no soportado en expresión constante");
+  }
+
+  if (auto *binary = dynamic_cast<BinaryExpression *>(exp)) {
+    const auto left = evaluateConstantInt(binary->left.get(), structInfos);
+    const auto right = evaluateConstantInt(binary->right.get(), structInfos);
+    switch (binary->op) {
+    case PLUS_OP: return left + right;
+    case MINUS_OP: return left - right;
+    case MUL_OP: return left * right;
+    case DIV_OP:
+      if (right == 0)
+        throw std::runtime_error(
+            "[Constant] División por cero en expresión constante");
+      return left / right;
+    case MOD_OP:
+      if (right == 0)
+        throw std::runtime_error(
+            "[Constant] Módulo por cero en expresión constante");
+      return left % right;
+    case AND_OP: return left && right;
+    case OR_OP: return left || right;
+    case EQ_OP: return left == right;
+    case NE_OP: return left != right;
+    case LE_OP: return left < right;
+    case GT_OP: return left > right;
+    case LEQ_OP: return left <= right;
+    case GEQ_OP: return left >= right;
+    }
+  }
+
+  if (auto *size = dynamic_cast<SizeofExpression *>(exp)) {
+    if (size->expression)
+      throw std::runtime_error(
+          "[Constant] sizeof de expresión no soportado en expresión "
+          "constante");
+    const TypeInfo type{size->baseType, size->pointerDepth, {}};
+    if (structInfos)
+      return static_cast<std::int64_t>(storageBytes(type, *structInfos));
+    const auto &info = targetInfo();
+    if (size->baseType == "void" && size->pointerDepth > 0)
+      return static_cast<std::int64_t>(info.pointerSize);
+    if (size->baseType == "char")
+      return static_cast<std::int64_t>(info.charSize);
+    if (size->baseType == "short")
+      return static_cast<std::int64_t>(info.shortSize);
+    if (size->baseType == "int")
+      return static_cast<std::int64_t>(info.intSize);
+    if (size->baseType == "long")
+      return static_cast<std::int64_t>(info.longSize);
+    if (size->baseType == "long long")
+      return static_cast<std::int64_t>(info.longLongSize);
+    throw std::runtime_error(
+        "[Constant] sizeof de tipo desconocido en expresión constante");
+  }
+
+  throw std::runtime_error(
+      "[Constant] La expresión no es una constante de tiempo de "
+      "compilación");
+}

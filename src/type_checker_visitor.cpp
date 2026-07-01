@@ -686,8 +686,10 @@ int TypeCheckerVisitor::visit(ContinueStatement *) {
 int TypeCheckerVisitor::visit(SwitchStatement *stm) {
   requireInteger(stm->expression.get(), "switch");
   breakableDepth++;
-  std::unordered_map<int, bool> caseValues;
+  std::unordered_map<std::int64_t, bool> caseValues;
   for (auto &c : stm->cases) {
+    c->expression->accept(this);
+    c->value = evaluateConstantInt(c->expression.get(), &structInfos);
     if (caseValues.contains(c->value))
       throw std::runtime_error("[TypeChecker] case duplicado en switch");
     caseValues[c->value] = true;

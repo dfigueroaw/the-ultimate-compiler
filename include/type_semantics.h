@@ -3,6 +3,9 @@
 
 #include "visitor.h"
 
+#include <cstdint>
+#include <unordered_map>
+
 enum class ConversionKind {
   Identity,
   Integer,
@@ -48,5 +51,9 @@ BinarySemantics analyzeBinary(BinaryOp op, const TypeInfo &left,
                               const TypeInfo &right,
                               bool leftNullPointerConstant = false,
                               bool rightNullPointerConstant = false);
+
+std::int64_t evaluateConstantInt(
+    Expression *exp,
+    const std::unordered_map<std::string, StructInfo> *structInfos = nullptr);
 
 #endif
