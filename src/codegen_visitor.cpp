@@ -1,3 +1,4 @@
+#include "../include/dead_code_eliminator.h"
 #include "../include/expression_optimizer.h"
 #include "../include/visitor_utils.h"
 
@@ -102,6 +103,7 @@ int GenCodeVisitor::storeTarget(const LValue &lv) {
 int GenCodeVisitor::generate(Program *program) {
   const SemanticInfo semantics = typeChecker.analyze(program);
   optimizeExpressions(program, semantics);
+  eliminateDeadCode(program);
   functionFrameBytes = semantics.frameBytes;
   structInfos = semantics.structs;
   functionReturnTypes = semantics.functionReturns;
