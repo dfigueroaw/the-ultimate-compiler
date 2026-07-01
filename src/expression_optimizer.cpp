@@ -1,4 +1,4 @@
-#include "../include/constant_folder.h"
+#include "../include/expression_optimizer.h"
 
 #include "../include/visitor_utils.h"
 
@@ -13,12 +13,12 @@
 #include <variant>
 
 namespace {
-class ConstantFolder {
+class ExpressionOptimizer {
 public:
-  explicit ConstantFolder(const SemanticInfo &semantics)
+  explicit ExpressionOptimizer(const SemanticInfo &semantics)
       : semantics(semantics), structInfos(semantics.structs) {}
 
-  void fold(Program *program) {
+  void optimize(Program *program) {
     variableTypes.add_level();
     for (auto &declaration : program->globalDeclarations) {
       registerDeclaration(declaration.get());
@@ -186,13 +186,35 @@ private:
     }
 
     const auto value = constantValue(expression.get());
-    if (!value)
+    if (!value) {
+      simplifyExpression(expression);
       return;
+    }
 
     auto replacement = std::make_unique<NumberExpression>(value->value);
     if (!sameExpressionType(expression.get(), replacement.get()))
       return;
     expression = std::move(replacement);
+    return;
+  }
+
+  void simplifyExpression(std::unique_ptr<Expression> &expression) {
+    auto *binary = dynamic_cast<BinaryExpression *>(expression.get());
+    if (!binary)
+      return;
+
+    if ((binary->op == PLUS_OP || binary->op == MUL_OP) &&
+        isLiteral(binary->left.get(), identityValue(binary->op))) {
+      replaceWithChildIfSameType(expression, binary->right);
+      return;
+    }
+
+    if ((binary->op == PLUS_OP || binary->op == MINUS_OP ||
+         binary->op == MUL_OP || binary->op == DIV_OP) &&
+        isLiteral(binary->right.get(), identityValue(binary->op))) {
+      replaceWithChildIfSameType(expression, binary->left);
+      return;
+    }
   }
 
   std::optional<ConstantValue> constantValue(Expression *expression) const {
@@ -225,6 +247,22 @@ private:
       return sizeofValue(size);
 
     return std::nullopt;
+  }
+
+  std::int64_t identityValue(BinaryOp op) const {
+    return op == MUL_OP || op == DIV_OP ? 1 : 0;
+  }
+
+  bool isLiteral(Expression *expression, std::int64_t value) const {
+    auto *number = dynamic_cast<NumberExpression *>(expression);
+    return number && number->value == value;
+  }
+
+  void replaceWithChildIfSameType(std::unique_ptr<Expression> &expression,
+                                  std::unique_ptr<Expression> &child) {
+    if (!sameExpressionType(expression.get(), child.get()))
+      return;
+    expression = std::move(child);
   }
 
   std::optional<ConstantValue> binaryValue(BinaryOp op, std::int64_t left,
@@ -308,7 +346,7 @@ private:
 };
 } // namespace
 
-void foldConstants(Program *program, const SemanticInfo &semantics) {
-  ConstantFolder folder(semantics);
-  folder.fold(program);
+void optimizeExpressions(Program *program, const SemanticInfo &semantics) {
+  ExpressionOptimizer optimizer(semantics);
+  optimizer.optimize(program);
 }
