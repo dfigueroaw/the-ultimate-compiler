@@ -1,5 +1,3 @@
-
-
 #ifndef PARSER_H
 #define PARSER_H
 
@@ -43,10 +41,17 @@ private:
   parseFunctionDeclarationAfterSignature(std::string type,
                                          Declarator declarator);
   std::unique_ptr<Statement>
+  parseAssignmentFromTarget(std::unique_ptr<Expression> target,
+                            Token::Type terminator = Token::SEMICOL);
+  std::unique_ptr<Statement>
+  parseIDStatement(Token::Type terminator = Token::SEMICOL);
+  std::unique_ptr<Statement>
   parseAssignmentAfterName(std::string variable,
                            Token::Type terminator = Token::SEMICOL);
   std::unique_ptr<Statement>
   parsePointerAssignment(Token::Type terminator = Token::SEMICOL);
+  void addDeclarationOrFunction(Program &program, std::string type,
+                                Declarator declarator);
   ForInitializer parseForInitializer();
   std::unique_ptr<Statement> parseForControlStatement(Token::Type terminator);
   std::unique_ptr<BlockItem> parseBlockItem();

@@ -1,5 +1,3 @@
-
-
 #include "../include/scanner.h"
 
 #include <cctype>

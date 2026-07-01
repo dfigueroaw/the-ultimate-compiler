@@ -1,5 +1,3 @@
-
-
 #include "../include/token.h"
 
 #include <string>

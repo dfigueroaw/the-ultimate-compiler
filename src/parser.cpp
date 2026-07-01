@@ -1,5 +1,3 @@
-
-
 #include "../include/parser.h"
 
 #include <algorithm>
@@ -107,33 +105,14 @@ std::unique_ptr<Program> Parser::parseProgram() {
         continue;
       }
 
-      auto declarator = parseDeclarator();
-      const std::string type = "struct " + name;
-      if (check(Token::LPAREN)) {
-        program->functionDeclarations.push_back(
-            parseFunctionDeclarationAfterSignature(type,
-                                                   std::move(declarator)));
-      } else {
-        program->globalDeclarations.push_back(
-            parseVariableDeclarationAfterFirstDeclarator(
-                type, std::move(declarator)));
-        expect(Token::SEMICOL);
-      }
+      addDeclarationOrFunction(*program, "struct " + name,
+                              parseDeclarator());
       continue;
     }
 
     const auto type = parseTypeSpecifier();
-    auto declarator = parseDeclarator();
-
-    if (check(Token::LPAREN)) {
-      program->functionDeclarations.push_back(
-          parseFunctionDeclarationAfterSignature(type, std::move(declarator)));
-    } else {
-      program->globalDeclarations.push_back(
-          parseVariableDeclarationAfterFirstDeclarator(type,
-                                                       std::move(declarator)));
-      expect(Token::SEMICOL);
-    }
+    addDeclarationOrFunction(*program, std::move(type),
+                            parseDeclarator());
   }
 
   return program;
@@ -237,6 +216,20 @@ Parser::parseVariableDeclarationAfterFirstDeclarator(std::string type,
   return declaration;
 }
 
+void Parser::addDeclarationOrFunction(Program &program, std::string type,
+                                       Declarator declarator) {
+  if (check(Token::LPAREN)) {
+    program.functionDeclarations.push_back(
+        parseFunctionDeclarationAfterSignature(std::move(type),
+                                               std::move(declarator)));
+  } else {
+    program.globalDeclarations.push_back(
+        parseVariableDeclarationAfterFirstDeclarator(std::move(type),
+                                                     std::move(declarator)));
+    expect(Token::SEMICOL);
+  }
+}
+
 void Parser::addParameter(FunctionDeclaration &function, std::string type,
                           Declarator parameter) {
   if (!parameter.dimensions.empty())
@@ -314,42 +307,7 @@ std::unique_ptr<BlockItem> Parser::parseBlockItem() {
       expect(Token::SEMICOL);
       return std::make_unique<DeclarationItem>(std::move(declaration));
     }
-    if (check(Token::LPAREN)) {
-      auto call = parseCallAfterName(std::move(first));
-      expect(Token::SEMICOL);
-      return std::make_unique<StatementItem>(
-          std::make_unique<ExpressionStatement>(std::move(call)));
-    }
-    std::unique_ptr<Expression> expression =
-        std::make_unique<IdentifierExpression>(first);
-    expression = parsePostfix(std::move(expression));
-    if (auto *incDec = dynamic_cast<IncDecExpression *>(expression.get())) {
-      if (incDec->postfix) {
-        expect(Token::SEMICOL);
-        return std::make_unique<StatementItem>(
-            std::make_unique<ExpressionStatement>(std::move(expression)));
-      }
-    }
-    if (!dynamic_cast<IdentifierExpression *>(expression.get())) {
-      if (match(Token::ASSIGN)) {
-        auto statement = std::make_unique<AssignmentStatement>(
-            std::move(expression), parseCE());
-        expect(Token::SEMICOL);
-        return std::make_unique<StatementItem>(std::move(statement));
-      }
-      if (!isCompoundAssignment(current->type))
-        error("Operacion de asignacion no aceptada. Se espero =");
-      const Token::Type op = current->type;
-      advance();
-      auto statement = std::make_unique<AssignmentStatement>(
-          std::move(expression), parseCE());
-      auto compound = std::make_unique<CompoundAssignmentStatement>(
-          std::move(statement->target), std::move(statement->expression),
-          compoundAssignmentOp(op));
-      expect(Token::SEMICOL);
-      return std::make_unique<StatementItem>(std::move(compound));
-    }
-    return std::make_unique<StatementItem>(parseAssignmentAfterName(first));
+    return std::make_unique<StatementItem>(parseIDStatement());
   }
 
   return std::make_unique<StatementItem>(parseStm());
@@ -403,15 +361,11 @@ Parser::parsePostfix(std::unique_ptr<Expression> expression) {
 }
 
 std::unique_ptr<Statement>
-Parser::parseAssignmentAfterName(std::string variable, Token::Type terminator) {
-  std::unique_ptr<Expression> target;
-
-  target = std::make_unique<IdentifierExpression>(variable);
-  target = parsePostfix(std::move(target));
-
+Parser::parseAssignmentFromTarget(std::unique_ptr<Expression> target,
+                                   Token::Type terminator) {
   if (match(Token::ASSIGN)) {
-    auto statement =
-        std::make_unique<AssignmentStatement>(std::move(target), parseCE());
+    auto statement = std::make_unique<AssignmentStatement>(
+        std::move(target), parseCE());
     expect(terminator);
     return statement;
   }
@@ -426,23 +380,45 @@ Parser::parseAssignmentAfterName(std::string variable, Token::Type terminator) {
 }
 
 std::unique_ptr<Statement>
+Parser::parseIDStatement(Token::Type terminator) {
+  std::string name = previous->text;
+
+  if (check(Token::LPAREN)) {
+    auto call = parseCallAfterName(std::move(name));
+    expect(terminator);
+    return std::make_unique<ExpressionStatement>(std::move(call));
+  }
+
+  std::unique_ptr<Expression> expression =
+      std::make_unique<IdentifierExpression>(name);
+  expression = parsePostfix(std::move(expression));
+
+  if (auto *incDec = dynamic_cast<IncDecExpression *>(expression.get())) {
+    if (incDec->postfix) {
+      expect(terminator);
+      return std::make_unique<ExpressionStatement>(std::move(expression));
+    }
+  }
+
+  if (!dynamic_cast<IdentifierExpression *>(expression.get()))
+    return parseAssignmentFromTarget(std::move(expression), terminator);
+
+  return parseAssignmentAfterName(name, terminator);
+}
+
+std::unique_ptr<Statement>
+Parser::parseAssignmentAfterName(std::string variable, Token::Type terminator) {
+  std::unique_ptr<Expression> target =
+      std::make_unique<IdentifierExpression>(std::move(variable));
+  target = parsePostfix(std::move(target));
+  return parseAssignmentFromTarget(std::move(target), terminator);
+}
+
+std::unique_ptr<Statement>
 Parser::parsePointerAssignment(Token::Type terminator) {
   expect(Token::MUL);
   auto target = std::make_unique<DereferenceExpression>(parseF());
-  if (match(Token::ASSIGN)) {
-    auto statement =
-        std::make_unique<AssignmentStatement>(std::move(target), parseCE());
-    expect(terminator);
-    return statement;
-  }
-  if (!isCompoundAssignment(current->type))
-    error("Operacion de asignacion no aceptada. Se espero =");
-  const Token::Type op = current->type;
-  advance();
-  auto statement = std::make_unique<CompoundAssignmentStatement>(
-      std::move(target), parseCE(), compoundAssignmentOp(op));
-  expect(terminator);
-  return statement;
+  return parseAssignmentFromTarget(std::move(target), terminator);
 }
 
 std::unique_ptr<Statement>
@@ -452,38 +428,8 @@ Parser::parseForControlStatement(Token::Type terminator) {
     return nullptr;
   }
 
-  if (match(Token::ID)) {
-    if (check(Token::LPAREN)) {
-      auto call = parseCallAfterName(previous->text);
-      expect(terminator);
-      return std::make_unique<ExpressionStatement>(std::move(call));
-    }
-    std::unique_ptr<Expression> expression =
-        std::make_unique<IdentifierExpression>(previous->text);
-    expression = parsePostfix(std::move(expression));
-    if (auto *incDec = dynamic_cast<IncDecExpression *>(expression.get())) {
-      if (incDec->postfix) {
-        expect(terminator);
-        return std::make_unique<ExpressionStatement>(std::move(expression));
-      }
-    }
-    if (auto *id = dynamic_cast<IdentifierExpression *>(expression.get()))
-      return parseAssignmentAfterName(id->value, terminator);
-    if (match(Token::ASSIGN)) {
-      auto statement = std::make_unique<AssignmentStatement>(
-          std::move(expression), parseCE());
-      expect(terminator);
-      return statement;
-    }
-    if (!isCompoundAssignment(current->type))
-      error("Operacion de asignacion no aceptada. Se espero =");
-    const Token::Type op = current->type;
-    advance();
-    auto statement = std::make_unique<CompoundAssignmentStatement>(
-        std::move(expression), parseCE(), compoundAssignmentOp(op));
-    expect(terminator);
-    return statement;
-  }
+  if (match(Token::ID))
+    return parseIDStatement(terminator);
 
   if (match(Token::PLUSPLUS) || match(Token::MINUSMINUS)) {
     const IncDecOp op = previous->type == Token::PLUSPLUS ? IncDecOp::Increment
@@ -516,39 +462,8 @@ ForInitializer Parser::parseForInitializer() {
 }
 
 std::unique_ptr<Statement> Parser::parseStm() {
-  if (match(Token::ID)) {
-    if (check(Token::LPAREN)) {
-      auto call = parseCallAfterName(previous->text);
-      expect(Token::SEMICOL);
-      return std::make_unique<ExpressionStatement>(std::move(call));
-    }
-    std::unique_ptr<Expression> expression =
-        std::make_unique<IdentifierExpression>(previous->text);
-    expression = parsePostfix(std::move(expression));
-    if (auto *incDec = dynamic_cast<IncDecExpression *>(expression.get())) {
-      if (incDec->postfix) {
-        expect(Token::SEMICOL);
-        return std::make_unique<ExpressionStatement>(std::move(expression));
-      }
-    }
-    if (!dynamic_cast<IdentifierExpression *>(expression.get())) {
-      if (match(Token::ASSIGN)) {
-        auto statement = std::make_unique<AssignmentStatement>(
-            std::move(expression), parseCE());
-        expect(Token::SEMICOL);
-        return statement;
-      }
-      if (!isCompoundAssignment(current->type))
-        error("Operacion de asignacion no aceptada. Se espero =");
-      const Token::Type op = current->type;
-      advance();
-      auto statement = std::make_unique<CompoundAssignmentStatement>(
-          std::move(expression), parseCE(), compoundAssignmentOp(op));
-      expect(Token::SEMICOL);
-      return statement;
-    }
-    return parseAssignmentAfterName(previous->text);
-  }
+  if (match(Token::ID))
+    return parseIDStatement();
 
   if (match(Token::PLUSPLUS) || match(Token::MINUSMINUS)) {
     const IncDecOp op = previous->type == Token::PLUSPLUS ? IncDecOp::Increment
