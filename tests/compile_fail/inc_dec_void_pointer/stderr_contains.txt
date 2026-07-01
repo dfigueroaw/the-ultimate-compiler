@@ -1,0 +1,1 @@
+++/-- no acepta punteros a void

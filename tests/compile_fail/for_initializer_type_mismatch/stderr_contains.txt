@@ -1,0 +1,1 @@
+No se puede asignar int a int*

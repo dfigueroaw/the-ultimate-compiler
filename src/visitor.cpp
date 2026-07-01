@@ -1,0 +1,30 @@
+#include "../include/visitor.h"
+
+int BinaryExpression::accept(Visitor *v) { return v->visit(this); }
+int NumberExpression::accept(Visitor *v) { return v->visit(this); }
+int StringExpression::accept(Visitor *v) { return v->visit(this); }
+int IdentifierExpression::accept(Visitor *v) { return v->visit(this); }
+int Program::accept(Visitor *v) { return v->visit(this); }
+int AssignmentStatement::accept(Visitor *v) { return v->visit(this); }
+int CompoundAssignmentStatement::accept(Visitor *v) { return v->visit(this); }
+int SubscriptExpression::accept(Visitor *v) { return v->visit(this); }
+int DereferenceExpression::accept(Visitor *v) { return v->visit(this); }
+int AddressExpression::accept(Visitor *v) { return v->visit(this); }
+int SizeofExpression::accept(Visitor *v) { return v->visit(this); }
+int ExpressionStatement::accept(Visitor *v) { return v->visit(this); }
+int IfStatement::accept(Visitor *v) { return v->visit(this); }
+int ForStatement::accept(Visitor *v) { return v->visit(this); }
+int WhileStatement::accept(Visitor *v) { return v->visit(this); }
+int Body::accept(Visitor *v) { return v->visit(this); }
+int VariableDeclaration::accept(Visitor *v) { return v->visit(this); }
+int FunctionCallExpression::accept(Visitor *v) { return v->visit(this); }
+int FunctionDeclaration::accept(Visitor *v) { return v->visit(this); }
+int ReturnStatement::accept(Visitor *v) { return v->visit(this); }
+int DoWhileStatement::accept(Visitor *v) { return v->visit(this); }
+int BreakStatement::accept(Visitor *v) { return v->visit(this); }
+int ContinueStatement::accept(Visitor *v) { return v->visit(this); }
+int SwitchStatement::accept(Visitor *v) { return v->visit(this); }
+int UnaryExpression::accept(Visitor *v) { return v->visit(this); }
+int IncDecExpression::accept(Visitor *v) { return v->visit(this); }
+int FieldExpression::accept(Visitor *v) { return v->visit(this); }
+int StructDeclaration::accept(Visitor *v) { return v->visit(this); }

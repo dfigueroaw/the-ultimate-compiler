@@ -1,0 +1,1 @@
+Operación binaria requiere operandos int

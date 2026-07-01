@@ -1,0 +1,24 @@
+# Build products
+/build/
+/test-artifacts/
+
+# Generated assembly or binaries from ad-hoc compiler runs
+*.s
+*.out
+*.exe
+
+# Object files and native build byproducts
+*.o
+*.a
+*.so
+*.dylib
+
+# Python tooling caches
+__pycache__/
+*.py[cod]
+
+# Editor and OS noise
+.DS_Store
+*.swp
+*.swo
+*~
