@@ -282,6 +282,10 @@ void AsmBuilder::imul(AsmWidth width, AsmOperand src, AsmOperand dst) {
   instr("imul", width, {std::move(src), std::move(dst)});
 }
 
+void AsmBuilder::div(AsmWidth width, AsmOperand operand) {
+  instr("div", width, {std::move(operand)});
+}
+
 void AsmBuilder::idiv(AsmWidth width, AsmOperand operand) {
   instr("idiv", width, {std::move(operand)});
 }

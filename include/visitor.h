@@ -57,6 +57,7 @@ enum class TypeKind {
 
 struct TypeInfo {
   TypeKind kind = TypeKind::Int;
+  bool isUnsigned = false;
   std::string name;
   std::shared_ptr<TypeInfo> element;
   std::size_t arraySize = 0;
@@ -71,6 +72,7 @@ struct TypeInfo {
   bool isPointer() const { return kind == TypeKind::Pointer; }
   bool isArray() const { return kind == TypeKind::Array; }
   bool isScalarInteger() const;
+  bool isUnsignedInteger() const;
   bool isVoidObject() const;
   bool isStructObject() const;
   bool isCharObject() const;

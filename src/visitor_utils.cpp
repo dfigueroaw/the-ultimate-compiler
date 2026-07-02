@@ -10,7 +10,10 @@ const TargetInfo &targetInfo() {
 
 bool isBuiltinType(const std::string &type) {
   return type == "int" || type == "void" || type == "char" ||
-         type == "short" || type == "long" || type == "long long";
+         type == "short" || type == "long" || type == "long long" ||
+         type == "unsigned char" || type == "unsigned short" ||
+         type == "unsigned int" || type == "unsigned long" ||
+         type == "unsigned long long";
 }
 
 std::optional<std::size_t> constSize(Expression *exp) {
@@ -48,16 +51,24 @@ std::size_t alignTo(std::size_t value, std::size_t align) {
 TypeInfo scalarTypeFromName(const std::string &name) {
   if (name == "void")
     return TypeInfo::scalar(TypeKind::Void);
-  if (name == "char")
-    return TypeInfo::scalar(TypeKind::Char);
-  if (name == "short")
-    return TypeInfo::scalar(TypeKind::Short);
-  if (name == "int")
-    return TypeInfo::scalar(TypeKind::Int);
-  if (name == "long")
-    return TypeInfo::scalar(TypeKind::Long);
-  if (name == "long long")
-    return TypeInfo::scalar(TypeKind::LongLong);
+  const bool isUnsigned = name.starts_with("unsigned ");
+  const std::string base =
+      isUnsigned ? name.substr(std::string("unsigned ").size()) : name;
+  if (base == "char" || base == "short" || base == "int" ||
+      base == "long" || base == "long long") {
+    TypeKind kind = TypeKind::Int;
+    if (base == "char")
+      kind = TypeKind::Char;
+    else if (base == "short")
+      kind = TypeKind::Short;
+    else if (base == "long")
+      kind = TypeKind::Long;
+    else if (base == "long long")
+      kind = TypeKind::LongLong;
+    TypeInfo type = TypeInfo::scalar(kind);
+    type.isUnsigned = isUnsigned;
+    return type;
+  }
   return TypeInfo::structure(name);
 }
 
@@ -316,6 +327,10 @@ bool TypeInfo::isScalarInteger() const {
          kind == TypeKind::LongLong;
 }
 
+bool TypeInfo::isUnsignedInteger() const {
+  return isScalarInteger() && isUnsigned;
+}
+
 bool TypeInfo::isVoidObject() const { return kind == TypeKind::Void; }
 
 bool TypeInfo::isStructObject() const { return kind == TypeKind::Struct; }
@@ -345,6 +360,8 @@ TypeInfo TypeInfo::decayed() const {
 bool TypeInfo::same(const TypeInfo &other) const {
   if (kind != other.kind)
     return false;
+  if (isScalarInteger())
+    return isUnsigned == other.isUnsigned;
   if (kind == TypeKind::Struct)
     return name == other.name;
   if (kind == TypeKind::Pointer)
@@ -369,18 +386,19 @@ std::vector<std::size_t> TypeInfo::dimensions() const {
 }
 
 std::string TypeInfo::display() const {
+  const std::string prefix = isUnsignedInteger() ? "unsigned " : "";
   if (kind == TypeKind::Void)
     return "void";
   if (kind == TypeKind::Char)
-    return "char";
+    return prefix + "char";
   if (kind == TypeKind::Short)
-    return "short";
+    return prefix + "short";
   if (kind == TypeKind::Int)
-    return "int";
+    return prefix + "int";
   if (kind == TypeKind::Long)
-    return "long";
+    return prefix + "long";
   if (kind == TypeKind::LongLong)
-    return "long long";
+    return prefix + "long long";
   if (kind == TypeKind::Struct)
     return name;
   if (kind == TypeKind::Pointer)

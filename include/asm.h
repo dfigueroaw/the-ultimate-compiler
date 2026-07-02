@@ -67,6 +67,7 @@ public:
   void add(AsmWidth width, AsmOperand src, AsmOperand dst);
   void sub(AsmWidth width, AsmOperand src, AsmOperand dst);
   void imul(AsmWidth width, AsmOperand src, AsmOperand dst);
+  void div(AsmWidth width, AsmOperand operand);
   void idiv(AsmWidth width, AsmOperand operand);
   void cmp(AsmWidth width, AsmOperand src, AsmOperand dst);
   void push(AsmOperand operand);

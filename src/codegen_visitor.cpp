@@ -35,6 +35,48 @@ AsmOperand asmReg(AsmRegister r, AsmWidth width = AsmWidth::Quad) {
 
 AsmOperand regText(const std::string &r) { return AsmOperand::regText(r); }
 
+std::string sizedRegText(const std::string &reg, AsmWidth width) {
+  if (width == AsmWidth::Quad)
+    return reg;
+  if (reg == "%rax")
+    return width == AsmWidth::Long   ? "%eax"
+           : width == AsmWidth::Word ? "%ax"
+                                      : "%al";
+  if (reg == "%rcx")
+    return width == AsmWidth::Long   ? "%ecx"
+           : width == AsmWidth::Word ? "%cx"
+                                      : "%cl";
+  if (reg == "%rdx")
+    return width == AsmWidth::Long   ? "%edx"
+           : width == AsmWidth::Word ? "%dx"
+                                      : "%dl";
+  if (reg == "%rdi")
+    return width == AsmWidth::Long   ? "%edi"
+           : width == AsmWidth::Word ? "%di"
+                                      : "%dil";
+  if (reg == "%rsi")
+    return width == AsmWidth::Long   ? "%esi"
+           : width == AsmWidth::Word ? "%si"
+                                      : "%sil";
+  if (reg == "%r8")
+    return width == AsmWidth::Long   ? "%r8d"
+           : width == AsmWidth::Word ? "%r8w"
+                                      : "%r8b";
+  if (reg == "%r9")
+    return width == AsmWidth::Long   ? "%r9d"
+           : width == AsmWidth::Word ? "%r9w"
+                                      : "%r9b";
+  if (reg == "%r10")
+    return width == AsmWidth::Long   ? "%r10d"
+           : width == AsmWidth::Word ? "%r10w"
+                                      : "%r10b";
+  if (reg == "%r11")
+    return width == AsmWidth::Long   ? "%r11d"
+           : width == AsmWidth::Word ? "%r11w"
+                                      : "%r11b";
+  return reg;
+}
+
 AsmOperand imm(long value) { return AsmOperand::imm(value); }
 
 AsmOperand stackMem(long displacement) {
@@ -48,6 +90,26 @@ AsmOperand globalMem(const std::string &name) {
 AsmOperand indirectMem(AsmRegister base = AsmRegister::RAX,
                        long displacement = 0) {
   return AsmOperand::indirect(base, displacement);
+}
+
+void prepareDivisionDividend(AsmBuilder &assembly, AsmWidth width,
+                             bool unsignedDivision) {
+  if (unsignedDivision) {
+    assembly.mov(AsmWidth::Quad, imm(0), asmReg(AsmRegister::RDX));
+    return;
+  }
+  if (width == AsmWidth::Quad)
+    assembly.cqto();
+  else
+    assembly.instr("cdq");
+}
+
+void emitDivide(AsmBuilder &assembly, AsmWidth width, AsmOperand divisor,
+                bool unsignedDivision) {
+  if (unsignedDivision)
+    assembly.div(width, std::move(divisor));
+  else
+    assembly.idiv(width, std::move(divisor));
 }
 
 AbiInfo classifyAbi(
@@ -326,9 +388,20 @@ void GenCodeVisitor::normalizeScalarValue(const TypeInfo &type) {
   if (!isScalarInteger(decayed))
     return;
   const AsmWidth width = storageWidth(decayed);
-  if (width != AsmWidth::Quad)
+  if (width == AsmWidth::Quad)
+    return;
+  if (decayed.isUnsignedInteger()) {
+    if (width == AsmWidth::Long) {
+      assembly.mov(AsmWidth::Long, asmReg(AsmRegister::RAX, AsmWidth::Long),
+                   asmReg(AsmRegister::RAX, AsmWidth::Long));
+    } else {
+      assembly.movzx(width, AsmWidth::Quad, asmReg(AsmRegister::RAX, width),
+                     asmReg(AsmRegister::RAX));
+    }
+  } else {
     assembly.movsx(width, AsmWidth::Quad, asmReg(AsmRegister::RAX, width),
                    asmReg(AsmRegister::RAX));
+  }
 }
 
 bool GenCodeVisitor::returnsViaHiddenPointer(const TypeInfo &type) const {
@@ -351,8 +424,16 @@ void GenCodeVisitor::emitLoadAddressed(const TypeInfo &type, AsmOperand address,
     const AsmWidth width = storageWidth(decayed);
     if (width == AsmWidth::Quad)
       assembly.mov(AsmWidth::Quad, std::move(address), regText(reg));
-    else
+    else if (decayed.isUnsignedInteger()) {
+      if (width == AsmWidth::Long)
+        assembly.mov(AsmWidth::Long, std::move(address),
+                     regText(sizedRegText(reg, AsmWidth::Long)));
+      else
+        assembly.movzx(width, AsmWidth::Quad, std::move(address),
+                       regText(reg));
+    } else {
       assembly.movsx(width, AsmWidth::Quad, std::move(address), regText(reg));
+    }
   } else {
     throw std::runtime_error("[CodeGen] Carga escalar no soportada");
   }
@@ -850,18 +931,14 @@ int GenCodeVisitor::visit(CompoundAssignmentStatement *stm) {
                     asmReg(AsmRegister::RAX, width));
       break;
     case DIV_OP:
-      if (width == AsmWidth::Quad)
-        assembly.cqto();
-      else
-        assembly.instr("cdq");
-      assembly.idiv(width, asmReg(AsmRegister::RCX, width));
+      prepareDivisionDividend(assembly, width, resultType.isUnsignedInteger());
+      emitDivide(assembly, width, asmReg(AsmRegister::RCX, width),
+                 resultType.isUnsignedInteger());
       break;
     case MOD_OP:
-      if (width == AsmWidth::Quad)
-        assembly.cqto();
-      else
-        assembly.instr("cdq");
-      assembly.idiv(width, asmReg(AsmRegister::RCX, width));
+      prepareDivisionDividend(assembly, width, resultType.isUnsignedInteger());
+      emitDivide(assembly, width, asmReg(AsmRegister::RCX, width),
+                 resultType.isUnsignedInteger());
       assembly.mov(width, asmReg(AsmRegister::RDX, width),
                    asmReg(AsmRegister::RAX, width));
       break;
@@ -976,6 +1053,11 @@ int GenCodeVisitor::visit(BinaryExpression *exp) {
       pointerComparison
           ? AsmWidth::Quad
           : expressionWidth(usualArithmeticType(leftType, rightType));
+  const char *lessCondition = semantics.unsignedComparison ? "b" : "l";
+  const char *greaterCondition = semantics.unsignedComparison ? "a" : "g";
+  const char *lessEqualCondition = semantics.unsignedComparison ? "be" : "le";
+  const char *greaterEqualCondition =
+      semantics.unsignedComparison ? "ae" : "ge";
 
   switch (exp->op) {
   case PLUS_OP:
@@ -1033,19 +1115,19 @@ int GenCodeVisitor::visit(BinaryExpression *exp) {
     normalizeScalarValue(semantics.result);
     break;
   case DIV_OP:
-    if (scalarWidth == AsmWidth::Quad)
-      assembly.cqto();
-    else
-      assembly.instr("cdq");
-    assembly.idiv(scalarWidth, asmReg(AsmRegister::RCX, scalarWidth));
+    prepareDivisionDividend(assembly, scalarWidth,
+                            semantics.result.isUnsignedInteger());
+    emitDivide(assembly, scalarWidth,
+               asmReg(AsmRegister::RCX, scalarWidth),
+               semantics.result.isUnsignedInteger());
     normalizeScalarValue(semantics.result);
     break;
   case MOD_OP:
-    if (scalarWidth == AsmWidth::Quad)
-      assembly.cqto();
-    else
-      assembly.instr("cdq");
-    assembly.idiv(scalarWidth, asmReg(AsmRegister::RCX, scalarWidth));
+    prepareDivisionDividend(assembly, scalarWidth,
+                            semantics.result.isUnsignedInteger());
+    emitDivide(assembly, scalarWidth,
+               asmReg(AsmRegister::RCX, scalarWidth),
+               semantics.result.isUnsignedInteger());
     assembly.mov(scalarWidth, asmReg(AsmRegister::RDX, scalarWidth),
                  asmReg(AsmRegister::RAX, scalarWidth));
     normalizeScalarValue(semantics.result);
@@ -1054,7 +1136,7 @@ int GenCodeVisitor::visit(BinaryExpression *exp) {
     assembly.cmp(comparisonWidth, asmReg(AsmRegister::RCX, comparisonWidth),
                  asmReg(AsmRegister::RAX, comparisonWidth));
     assembly.mov(AsmWidth::Quad, imm(0), asmReg(AsmRegister::RAX));
-    assembly.set("l", asmReg(AsmRegister::RAX, AsmWidth::Byte));
+    assembly.set(lessCondition, asmReg(AsmRegister::RAX, AsmWidth::Byte));
     assembly.movzx(AsmWidth::Byte, AsmWidth::Quad,
                    asmReg(AsmRegister::RAX, AsmWidth::Byte),
                    asmReg(AsmRegister::RAX));
@@ -1063,7 +1145,7 @@ int GenCodeVisitor::visit(BinaryExpression *exp) {
     assembly.cmp(comparisonWidth, asmReg(AsmRegister::RCX, comparisonWidth),
                  asmReg(AsmRegister::RAX, comparisonWidth));
     assembly.mov(AsmWidth::Quad, imm(0), asmReg(AsmRegister::RAX));
-    assembly.set("g", asmReg(AsmRegister::RAX, AsmWidth::Byte));
+    assembly.set(greaterCondition, asmReg(AsmRegister::RAX, AsmWidth::Byte));
     assembly.movzx(AsmWidth::Byte, AsmWidth::Quad,
                    asmReg(AsmRegister::RAX, AsmWidth::Byte),
                    asmReg(AsmRegister::RAX));
@@ -1072,7 +1154,7 @@ int GenCodeVisitor::visit(BinaryExpression *exp) {
     assembly.cmp(comparisonWidth, asmReg(AsmRegister::RCX, comparisonWidth),
                  asmReg(AsmRegister::RAX, comparisonWidth));
     assembly.mov(AsmWidth::Quad, imm(0), asmReg(AsmRegister::RAX));
-    assembly.set("le", asmReg(AsmRegister::RAX, AsmWidth::Byte));
+    assembly.set(lessEqualCondition, asmReg(AsmRegister::RAX, AsmWidth::Byte));
     assembly.movzx(AsmWidth::Byte, AsmWidth::Quad,
                    asmReg(AsmRegister::RAX, AsmWidth::Byte),
                    asmReg(AsmRegister::RAX));
@@ -1081,7 +1163,8 @@ int GenCodeVisitor::visit(BinaryExpression *exp) {
     assembly.cmp(comparisonWidth, asmReg(AsmRegister::RCX, comparisonWidth),
                  asmReg(AsmRegister::RAX, comparisonWidth));
     assembly.mov(AsmWidth::Quad, imm(0), asmReg(AsmRegister::RAX));
-    assembly.set("ge", asmReg(AsmRegister::RAX, AsmWidth::Byte));
+    assembly.set(greaterEqualCondition,
+                 asmReg(AsmRegister::RAX, AsmWidth::Byte));
     assembly.movzx(AsmWidth::Byte, AsmWidth::Quad,
                    asmReg(AsmRegister::RAX, AsmWidth::Byte),
                    asmReg(AsmRegister::RAX));

@@ -24,11 +24,14 @@ struct Conversion {
 };
 
 bool isScalarInteger(const TypeInfo &type);
+bool isUnsignedInteger(const TypeInfo &type);
 TypeInfo integerLiteralType(const NumberExpression *number);
 int integerRank(const TypeInfo &type);
 TypeInfo integerPromotion(const TypeInfo &type);
 TypeInfo defaultArgumentPromotion(const TypeInfo &type);
 TypeInfo usualArithmeticType(const TypeInfo &left, const TypeInfo &right);
+TypeInfo signedVersion(TypeInfo type);
+TypeInfo unsignedVersion(TypeInfo type);
 bool isPointerType(const TypeInfo &type);
 bool isVoidPointer(const TypeInfo &type);
 bool areCompatiblePointers(const TypeInfo &left, const TypeInfo &right);
@@ -44,6 +47,7 @@ struct BinarySemantics {
   bool pointerArithmetic = false;
   bool pointerDifference = false;
   bool comparison = false;
+  bool unsignedComparison = false;
   bool logical = false;
 };
 

@@ -126,6 +126,24 @@ std::unique_ptr<VariableDeclaration> Parser::parseVariableDeclaration() {
 std::string Parser::parseTypeSpecifier() {
   if (match(Token::STRUCT))
     return "struct " + expectIdentifier("nombre de estructura");
+  if (match(Token::UNSIGNED)) {
+    if (match(Token::CHAR))
+      return "unsigned char";
+    if (match(Token::SHORT)) {
+      match(Token::INT);
+      return "unsigned short";
+    }
+    if (match(Token::LONG)) {
+      if (match(Token::LONG)) {
+        match(Token::INT);
+        return "unsigned long long";
+      }
+      match(Token::INT);
+      return "unsigned long";
+    }
+    match(Token::INT);
+    return "unsigned int";
+  }
   if (match(Token::INT))
     return "int";
   if (match(Token::VOID))
@@ -150,7 +168,8 @@ std::string Parser::parseTypeSpecifier() {
 bool Parser::isTypeSpecifierStart() const {
   return current->type == Token::STRUCT || current->type == Token::INT ||
          current->type == Token::VOID || current->type == Token::CHAR ||
-         current->type == Token::SHORT || current->type == Token::LONG;
+         current->type == Token::SHORT || current->type == Token::LONG ||
+         current->type == Token::UNSIGNED;
 }
 
 Declarator Parser::parseDeclarator() {
@@ -704,8 +723,7 @@ std::unique_ptr<Expression> Parser::parseF() {
 
   if (match(Token::SIZEOF)) {
     expect(Token::LPAREN);
-    if (check(Token::STRUCT) || check(Token::INT) || check(Token::VOID) ||
-        check(Token::CHAR) || check(Token::SHORT) || check(Token::LONG)) {
+    if (isTypeSpecifierStart()) {
       auto type = parseTypeSpecifier();
       std::size_t pointerDepth = 0;
       while (match(Token::MUL))

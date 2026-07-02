@@ -1,9 +1,14 @@
 #include "../include/visitor_utils.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <stdexcept>
 
 bool isScalarInteger(const TypeInfo &type) { return type.isScalarInteger(); }
+
+bool isUnsignedInteger(const TypeInfo &type) {
+  return type.isUnsignedInteger();
+}
 
 TypeInfo integerLiteralType(const NumberExpression *number) {
   const auto maxInt = static_cast<std::int64_t>(
@@ -27,11 +32,50 @@ int integerRank(const TypeInfo &type) {
   throw std::runtime_error("[Type] Tipo no entero sin rango");
 }
 
+namespace {
+std::size_t integerBytes(const TypeInfo &type) {
+  const auto &info = targetInfo();
+  if (type.kind == TypeKind::Char)
+    return info.charSize;
+  if (type.kind == TypeKind::Short)
+    return info.shortSize;
+  if (type.kind == TypeKind::Int)
+    return info.intSize;
+  if (type.kind == TypeKind::Long)
+    return info.longSize;
+  if (type.kind == TypeKind::LongLong)
+    return info.longLongSize;
+  throw std::runtime_error("[Type] Tipo no entero sin tamaño");
+}
+
+bool signedCanRepresentAllValuesOf(const TypeInfo &signedType,
+                                   const TypeInfo &unsignedType) {
+  return !signedType.isUnsignedInteger() && unsignedType.isUnsignedInteger() &&
+         integerBytes(signedType) > integerBytes(unsignedType);
+}
+} // namespace
+
+TypeInfo signedVersion(TypeInfo type) {
+  if (type.isScalarInteger())
+    type.isUnsigned = false;
+  return type;
+}
+
+TypeInfo unsignedVersion(TypeInfo type) {
+  if (type.isScalarInteger())
+    type.isUnsigned = true;
+  return type;
+}
+
 TypeInfo integerPromotion(const TypeInfo &type) {
   if (!isScalarInteger(type))
     return type;
-  if (integerRank(type) < integerRank(TypeInfo{"int", 0, {}}))
+  if (integerRank(type) < integerRank(TypeInfo{"int", 0, {}})) {
+    if (type.isUnsignedInteger() &&
+        integerBytes(type) >= integerBytes(TypeInfo{"int", 0, {}}))
+      return TypeInfo{"unsigned int", 0, {}};
     return TypeInfo{"int", 0, {}};
+  }
   return type;
 }
 
@@ -44,8 +88,20 @@ TypeInfo usualArithmeticType(const TypeInfo &left, const TypeInfo &right) {
   const TypeInfo promotedRight = integerPromotion(right.decayed());
   if (!isScalarInteger(promotedLeft) || !isScalarInteger(promotedRight))
     throw std::runtime_error("[Type] Conversión aritmética requiere enteros");
-  return integerRank(promotedLeft) >= integerRank(promotedRight) ? promotedLeft
-                                                                : promotedRight;
+  if (promotedLeft.isUnsignedInteger() == promotedRight.isUnsignedInteger())
+    return integerRank(promotedLeft) >= integerRank(promotedRight)
+               ? promotedLeft
+               : promotedRight;
+
+  const TypeInfo unsignedType =
+      promotedLeft.isUnsignedInteger() ? promotedLeft : promotedRight;
+  const TypeInfo signedType =
+      promotedLeft.isUnsignedInteger() ? promotedRight : promotedLeft;
+  if (integerRank(unsignedType) >= integerRank(signedType))
+    return unsignedType;
+  if (signedCanRepresentAllValuesOf(signedType, unsignedType))
+    return signedType;
+  return unsignedVersion(signedType);
 }
 
 bool isPointerType(const TypeInfo &type) { return type.isPointer(); }
@@ -148,10 +204,17 @@ BinarySemantics analyzeBinary(BinaryOp op, const TypeInfo &left,
   }
 
   if (op == LE_OP || op == GT_OP || op == LEQ_OP || op == GEQ_OP) {
-    if ((isScalarInteger(lhs) && isScalarInteger(rhs)) ||
-        areCompatiblePointers(lhs, rhs)) {
+    if (isScalarInteger(lhs) && isScalarInteger(rhs)) {
+      const TypeInfo comparisonType = usualArithmeticType(lhs, rhs);
       semantics.result = TypeInfo{"int", 0, {}};
       semantics.comparison = true;
+      semantics.unsignedComparison = comparisonType.isUnsignedInteger();
+      return semantics;
+    }
+    if (areCompatiblePointers(lhs, rhs)) {
+      semantics.result = TypeInfo{"int", 0, {}};
+      semantics.comparison = true;
+      semantics.unsignedComparison = true;
       return semantics;
     }
     throw std::runtime_error(
@@ -264,15 +327,16 @@ std::int64_t evaluateConstantInt(
     const auto &info = targetInfo();
     if (size->baseType == "void" && size->pointerDepth > 0)
       return static_cast<std::int64_t>(info.pointerSize);
-    if (size->baseType == "char")
+    if (size->baseType == "char" || size->baseType == "unsigned char")
       return static_cast<std::int64_t>(info.charSize);
-    if (size->baseType == "short")
+    if (size->baseType == "short" || size->baseType == "unsigned short")
       return static_cast<std::int64_t>(info.shortSize);
-    if (size->baseType == "int")
+    if (size->baseType == "int" || size->baseType == "unsigned int")
       return static_cast<std::int64_t>(info.intSize);
-    if (size->baseType == "long")
+    if (size->baseType == "long" || size->baseType == "unsigned long")
       return static_cast<std::int64_t>(info.longSize);
-    if (size->baseType == "long long")
+    if (size->baseType == "long long" ||
+        size->baseType == "unsigned long long")
       return static_cast<std::int64_t>(info.longLongSize);
     throw std::runtime_error(
         "[Constant] sizeof de tipo desconocido en expresión constante");
