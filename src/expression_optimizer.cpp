@@ -2,6 +2,7 @@
 
 #include "../include/visitor_utils.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -32,7 +33,8 @@ public:
 
 private:
   struct ConstantValue {
-    std::int64_t value = 0;
+    std::uint64_t bits = 0;
+    TypeInfo type;
   };
 
   const SemanticInfo &semantics;
@@ -191,7 +193,12 @@ private:
       return;
     }
 
-    auto replacement = std::make_unique<NumberExpression>(value->value);
+    const std::int64_t replacementValue =
+        value->type.isUnsignedInteger()
+            ? static_cast<std::int64_t>(value->bits)
+            : signedValue(*value);
+    auto replacement = std::make_unique<NumberExpression>(
+        replacementValue, value->type.display());
     if (!sameExpressionType(expression.get(), replacement.get()))
       return;
     expression = std::move(replacement);
@@ -248,19 +255,28 @@ private:
   }
 
   std::optional<ConstantValue> constantValue(Expression *expression) const {
-    if (auto *number = dynamic_cast<NumberExpression *>(expression))
-      return ConstantValue{number->value};
+    if (auto *number = dynamic_cast<NumberExpression *>(expression)) {
+      const TypeInfo type = expressionType(number);
+      return ConstantValue{convertBits(static_cast<std::uint64_t>(number->value),
+                                       type),
+                           type};
+    }
 
     if (auto *unary = dynamic_cast<UnaryExpression *>(expression)) {
       const auto inner = constantValue(unary->operand.get());
       if (!inner)
         return std::nullopt;
+      const TypeInfo resultType = expressionType(expression);
       if (unary->op == NOT_OP)
-        return ConstantValue{inner->value == 0 ? 1 : 0};
+        return ConstantValue{inner->bits == 0 ? 1U : 0U, resultType};
       if (unary->op == NEG_OP) {
-        if (inner->value == std::numeric_limits<std::int64_t>::min())
+        if (!resultType.isUnsignedInteger() &&
+            signedValue(*inner) == std::numeric_limits<std::int64_t>::min())
           return std::nullopt;
-        return ConstantValue{-inner->value};
+        return ConstantValue{
+            convertBits(static_cast<std::uint64_t>(-signedValue(*inner)),
+                        resultType),
+            resultType};
       }
       return std::nullopt;
     }
@@ -270,7 +286,7 @@ private:
       const auto right = constantValue(binary->right.get());
       if (!left || !right)
         return std::nullopt;
-      return binaryValue(binary->op, left->value, right->value);
+      return binaryValue(binary, *left, *right);
     }
 
     if (auto *size = dynamic_cast<SizeofExpression *>(expression))
@@ -291,6 +307,44 @@ private:
   bool isNonzeroLiteral(Expression *expression) const {
     auto *number = dynamic_cast<NumberExpression *>(expression);
     return number && number->value != 0;
+  }
+
+  std::size_t integerWidthBits(const TypeInfo &type) const {
+    return storageBytes(type, structInfos) * 8;
+  }
+
+  std::uint64_t maskForWidth(std::size_t bits) const {
+    if (bits >= 64)
+      return std::numeric_limits<std::uint64_t>::max();
+    return (std::uint64_t{1} << bits) - 1;
+  }
+
+  std::uint64_t convertBits(std::uint64_t bits, const TypeInfo &type) const {
+    if (!type.isScalarInteger())
+      return bits;
+    return bits & maskForWidth(integerWidthBits(type));
+  }
+
+  std::int64_t signedValue(const ConstantValue &value) const {
+    const std::size_t bits = integerWidthBits(value.type);
+    const std::uint64_t masked = convertBits(value.bits, value.type);
+    if (bits >= 64)
+      return static_cast<std::int64_t>(masked);
+    const std::uint64_t sign = std::uint64_t{1} << (bits - 1);
+    if ((masked & sign) == 0)
+      return static_cast<std::int64_t>(masked);
+    return static_cast<std::int64_t>(masked | ~maskForWidth(bits));
+  }
+
+  ConstantValue converted(ConstantValue value, const TypeInfo &type) const {
+    if (value.type.isUnsignedInteger()) {
+      value.bits = convertBits(value.bits, type);
+    } else {
+      value.bits = convertBits(static_cast<std::uint64_t>(signedValue(value)),
+                               type);
+    }
+    value.type = type;
+    return value;
   }
 
   void replaceWithLiteralIfSameType(std::unique_ptr<Expression> &expression,
@@ -322,40 +376,88 @@ private:
     expression = std::move(replacement);
   }
 
-  std::optional<ConstantValue> binaryValue(BinaryOp op, std::int64_t left,
-                                           std::int64_t right) const {
-    std::int64_t result = 0;
+  std::optional<ConstantValue> binaryValue(BinaryExpression *binary,
+                                           ConstantValue left,
+                                           ConstantValue right) const {
+    const BinaryOp op = binary->op;
+    TypeInfo resultType = expressionType(binary);
+    TypeInfo operandType = resultType;
+    if (op == LE_OP || op == GT_OP || op == LEQ_OP || op == GEQ_OP ||
+        op == EQ_OP || op == NE_OP)
+      operandType = usualArithmeticType(left.type, right.type);
+    if (op == AND_OP || op == OR_OP)
+      operandType = TypeInfo{"int", 0, {}};
+
+    left = converted(left, operandType);
+    right = converted(right, operandType);
+    const bool isUnsigned = operandType.isUnsignedInteger();
+    const std::uint64_t leftUnsigned = convertBits(left.bits, operandType);
+    const std::uint64_t rightUnsigned = convertBits(right.bits, operandType);
+    const std::int64_t leftSigned = signedValue(left);
+    const std::int64_t rightSigned = signedValue(right);
+
+    auto makeResult = [&](std::uint64_t bits) {
+      return ConstantValue{convertBits(bits, resultType), resultType};
+    };
+
+    std::int64_t signedResult = 0;
     switch (op) {
     case PLUS_OP:
-      if (__builtin_add_overflow(left, right, &result))
+      if (isUnsigned)
+        return makeResult(leftUnsigned + rightUnsigned);
+      if (__builtin_add_overflow(leftSigned, rightSigned, &signedResult))
         return std::nullopt;
-      return ConstantValue{result};
+      return makeResult(static_cast<std::uint64_t>(signedResult));
     case MINUS_OP:
-      if (__builtin_sub_overflow(left, right, &result))
+      if (isUnsigned)
+        return makeResult(leftUnsigned - rightUnsigned);
+      if (__builtin_sub_overflow(leftSigned, rightSigned, &signedResult))
         return std::nullopt;
-      return ConstantValue{result};
+      return makeResult(static_cast<std::uint64_t>(signedResult));
     case MUL_OP:
-      if (__builtin_mul_overflow(left, right, &result))
+      if (isUnsigned)
+        return makeResult(leftUnsigned * rightUnsigned);
+      if (__builtin_mul_overflow(leftSigned, rightSigned, &signedResult))
         return std::nullopt;
-      return ConstantValue{result};
+      return makeResult(static_cast<std::uint64_t>(signedResult));
     case DIV_OP:
-      if (right == 0 ||
-          (left == std::numeric_limits<std::int64_t>::min() && right == -1))
+      if ((isUnsigned && rightUnsigned == 0) ||
+          (!isUnsigned &&
+           (rightSigned == 0 ||
+            (leftSigned == std::numeric_limits<std::int64_t>::min() &&
+             rightSigned == -1))))
         return std::nullopt;
-      return ConstantValue{left / right};
+      return isUnsigned ? makeResult(leftUnsigned / rightUnsigned)
+                        : makeResult(static_cast<std::uint64_t>(leftSigned /
+                                                                rightSigned));
     case MOD_OP:
-      if (right == 0 ||
-          (left == std::numeric_limits<std::int64_t>::min() && right == -1))
+      if ((isUnsigned && rightUnsigned == 0) ||
+          (!isUnsigned &&
+           (rightSigned == 0 ||
+            (leftSigned == std::numeric_limits<std::int64_t>::min() &&
+             rightSigned == -1))))
         return std::nullopt;
-      return ConstantValue{left % right};
-    case LE_OP: return ConstantValue{left < right ? 1 : 0};
-    case GT_OP: return ConstantValue{left > right ? 1 : 0};
-    case LEQ_OP: return ConstantValue{left <= right ? 1 : 0};
-    case GEQ_OP: return ConstantValue{left >= right ? 1 : 0};
-    case EQ_OP: return ConstantValue{left == right ? 1 : 0};
-    case NE_OP: return ConstantValue{left != right ? 1 : 0};
-    case AND_OP: return ConstantValue{(left != 0 && right != 0) ? 1 : 0};
-    case OR_OP: return ConstantValue{(left != 0 || right != 0) ? 1 : 0};
+      return isUnsigned ? makeResult(leftUnsigned % rightUnsigned)
+                        : makeResult(static_cast<std::uint64_t>(leftSigned %
+                                                                rightSigned));
+    case LE_OP:
+      return makeResult(isUnsigned ? leftUnsigned < rightUnsigned
+                                   : leftSigned < rightSigned);
+    case GT_OP:
+      return makeResult(isUnsigned ? leftUnsigned > rightUnsigned
+                                   : leftSigned > rightSigned);
+    case LEQ_OP:
+      return makeResult(isUnsigned ? leftUnsigned <= rightUnsigned
+                                   : leftSigned <= rightSigned);
+    case GEQ_OP:
+      return makeResult(isUnsigned ? leftUnsigned >= rightUnsigned
+                                   : leftSigned >= rightSigned);
+    case EQ_OP: return makeResult(leftUnsigned == rightUnsigned);
+    case NE_OP: return makeResult(leftUnsigned != rightUnsigned);
+    case AND_OP:
+      return makeResult((left.bits != 0 && right.bits != 0) ? 1 : 0);
+    case OR_OP:
+      return makeResult((left.bits != 0 || right.bits != 0) ? 1 : 0);
     }
     return std::nullopt;
   }
@@ -377,8 +479,8 @@ private:
       type = TypeInfo{expression->baseType, expression->pointerDepth, {}};
     }
 
-    return ConstantValue{
-        static_cast<std::int64_t>(storageBytes(type, structInfos))};
+    const TypeInfo resultType{"int", 0, {}};
+    return ConstantValue{storageBytes(type, structInfos), resultType};
   }
 
   TypeResolver expressionTypeResolver() const {

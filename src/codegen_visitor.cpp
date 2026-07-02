@@ -5,6 +5,9 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -110,6 +113,25 @@ void emitDivide(AsmBuilder &assembly, AsmWidth width, AsmOperand divisor,
     assembly.div(width, std::move(divisor));
   else
     assembly.idiv(width, std::move(divisor));
+}
+
+std::optional<unsigned> unsignedPowerOfTwoShift(Expression *expression) {
+  auto *number = dynamic_cast<NumberExpression *>(expression);
+  if (!number || number->value <= 0)
+    return std::nullopt;
+  const auto value = static_cast<std::uint64_t>(number->value);
+  if ((value & (value - 1)) != 0)
+    return std::nullopt;
+  unsigned shift = 0;
+  for (std::uint64_t current = value; current > 1; current >>= 1)
+    shift++;
+  return shift;
+}
+
+std::uint64_t maskForShift(unsigned shift) {
+  if (shift >= 64)
+    return std::numeric_limits<std::uint64_t>::max();
+  return (std::uint64_t{1} << shift) - 1;
 }
 
 AbiInfo classifyAbi(
@@ -931,16 +953,39 @@ int GenCodeVisitor::visit(CompoundAssignmentStatement *stm) {
                     asmReg(AsmRegister::RAX, width));
       break;
     case DIV_OP:
-      prepareDivisionDividend(assembly, width, resultType.isUnsignedInteger());
-      emitDivide(assembly, width, asmReg(AsmRegister::RCX, width),
-                 resultType.isUnsignedInteger());
+      if (resultType.isUnsignedInteger()) {
+        if (const auto shift = unsignedPowerOfTwoShift(stm->expression.get())) {
+          if (*shift != 0)
+            assembly.instr("shr", width,
+                           {imm(static_cast<long>(*shift)),
+                            asmReg(AsmRegister::RAX, width)});
+        } else {
+          prepareDivisionDividend(assembly, width, true);
+          emitDivide(assembly, width, asmReg(AsmRegister::RCX, width), true);
+        }
+      } else {
+        prepareDivisionDividend(assembly, width, false);
+        emitDivide(assembly, width, asmReg(AsmRegister::RCX, width), false);
+      }
       break;
     case MOD_OP:
-      prepareDivisionDividend(assembly, width, resultType.isUnsignedInteger());
-      emitDivide(assembly, width, asmReg(AsmRegister::RCX, width),
-                 resultType.isUnsignedInteger());
-      assembly.mov(width, asmReg(AsmRegister::RDX, width),
-                   asmReg(AsmRegister::RAX, width));
+      if (resultType.isUnsignedInteger()) {
+        if (const auto shift = unsignedPowerOfTwoShift(stm->expression.get())) {
+          assembly.instr("and", width,
+                         {imm(static_cast<long>(maskForShift(*shift))),
+                          asmReg(AsmRegister::RAX, width)});
+        } else {
+          prepareDivisionDividend(assembly, width, true);
+          emitDivide(assembly, width, asmReg(AsmRegister::RCX, width), true);
+          assembly.mov(width, asmReg(AsmRegister::RDX, width),
+                       asmReg(AsmRegister::RAX, width));
+        }
+      } else {
+        prepareDivisionDividend(assembly, width, false);
+        emitDivide(assembly, width, asmReg(AsmRegister::RCX, width), false);
+        assembly.mov(width, asmReg(AsmRegister::RDX, width),
+                     asmReg(AsmRegister::RAX, width));
+      }
       break;
     case LE_OP:
     case GT_OP:
@@ -1115,21 +1160,44 @@ int GenCodeVisitor::visit(BinaryExpression *exp) {
     normalizeScalarValue(semantics.result);
     break;
   case DIV_OP:
-    prepareDivisionDividend(assembly, scalarWidth,
-                            semantics.result.isUnsignedInteger());
-    emitDivide(assembly, scalarWidth,
-               asmReg(AsmRegister::RCX, scalarWidth),
-               semantics.result.isUnsignedInteger());
+    if (semantics.result.isUnsignedInteger()) {
+      if (const auto shift = unsignedPowerOfTwoShift(exp->right.get())) {
+        if (*shift != 0)
+          assembly.instr("shr", scalarWidth,
+                         {imm(static_cast<long>(*shift)),
+                          asmReg(AsmRegister::RAX, scalarWidth)});
+      } else {
+        prepareDivisionDividend(assembly, scalarWidth, true);
+        emitDivide(assembly, scalarWidth,
+                   asmReg(AsmRegister::RCX, scalarWidth), true);
+      }
+    } else {
+      prepareDivisionDividend(assembly, scalarWidth, false);
+      emitDivide(assembly, scalarWidth,
+                 asmReg(AsmRegister::RCX, scalarWidth), false);
+    }
     normalizeScalarValue(semantics.result);
     break;
   case MOD_OP:
-    prepareDivisionDividend(assembly, scalarWidth,
-                            semantics.result.isUnsignedInteger());
-    emitDivide(assembly, scalarWidth,
-               asmReg(AsmRegister::RCX, scalarWidth),
-               semantics.result.isUnsignedInteger());
-    assembly.mov(scalarWidth, asmReg(AsmRegister::RDX, scalarWidth),
-                 asmReg(AsmRegister::RAX, scalarWidth));
+    if (semantics.result.isUnsignedInteger()) {
+      if (const auto shift = unsignedPowerOfTwoShift(exp->right.get())) {
+        assembly.instr("and", scalarWidth,
+                       {imm(static_cast<long>(maskForShift(*shift))),
+                        asmReg(AsmRegister::RAX, scalarWidth)});
+      } else {
+        prepareDivisionDividend(assembly, scalarWidth, true);
+        emitDivide(assembly, scalarWidth,
+                   asmReg(AsmRegister::RCX, scalarWidth), true);
+        assembly.mov(scalarWidth, asmReg(AsmRegister::RDX, scalarWidth),
+                     asmReg(AsmRegister::RAX, scalarWidth));
+      }
+    } else {
+      prepareDivisionDividend(assembly, scalarWidth, false);
+      emitDivide(assembly, scalarWidth,
+                 asmReg(AsmRegister::RCX, scalarWidth), false);
+      assembly.mov(scalarWidth, asmReg(AsmRegister::RDX, scalarWidth),
+                   asmReg(AsmRegister::RAX, scalarWidth));
+    }
     normalizeScalarValue(semantics.result);
     break;
   case LE_OP:
