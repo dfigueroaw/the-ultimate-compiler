@@ -29,15 +29,6 @@ bool sameRegister(const AsmOperand &left, const AsmOperand &right) {
          left.reg == right.reg && left.width == right.width;
 }
 
-bool referencesRsp(const AsmOperand &operand) {
-  if (isTypedRegister(operand))
-    return operand.reg == AsmRegister::RSP;
-  if (operand.kind != AsmOperandKind::Memory || !operand.text.empty())
-    return false;
-  return (operand.hasBase && operand.base == AsmRegister::RSP) ||
-         (operand.hasIndex && operand.index == AsmRegister::RSP);
-}
-
 bool isMov(const AsmInstruction &item) {
   return isInstruction(item) && item.opcode == "mov" &&
          item.operands.size() == 2;
@@ -47,39 +38,6 @@ bool isTrueNoOpRegisterMove(const AsmInstruction &item) {
   if (!isMov(item) || !sameRegister(item.operands[0], item.operands[1]))
     return false;
   return item.width != AsmWidth::Long;
-}
-
-bool isPush(const AsmInstruction &item) {
-  return isInstruction(item) && item.opcode == "push" &&
-         item.operands.size() == 1;
-}
-
-bool isPop(const AsmInstruction &item) {
-  return isInstruction(item) && item.opcode == "pop" &&
-         item.operands.size() == 1;
-}
-
-bool isJmp(const AsmInstruction &item) {
-  return isInstruction(item) && item.opcode == "jmp" &&
-         item.operands.size() == 1 &&
-         item.operands[0].kind == AsmOperandKind::Label;
-}
-
-bool isTerminator(const AsmInstruction &item) {
-  return isInstruction(item) && (item.opcode == "jmp" || item.opcode == "ret");
-}
-
-bool canRewritePushPopToMov(const AsmInstruction &push,
-                            const AsmInstruction &pop) {
-  const auto &src = push.operands[0];
-  const auto &dst = pop.operands[0];
-  if (!isTypedRegister(src))
-    return false;
-  if (!isTypedRegister(dst))
-    return false;
-  if (referencesRsp(src) || referencesRsp(dst))
-    return false;
-  return true;
 }
 
 std::size_t nextNonBlank(const std::vector<AsmInstruction> &items,
@@ -98,38 +56,14 @@ bool removeRedundantMoves(std::vector<AsmInstruction> &items) {
   return items.size() != original;
 }
 
-bool simplifyPushPop(std::vector<AsmInstruction> &items) {
-  bool changed = false;
-  for (std::size_t i = 0; i + 1 < items.size();) {
-    if (!isPush(items[i]) || !isPop(items[i + 1])) {
-      ++i;
-      continue;
-    }
+bool isJmp(const AsmInstruction &item) {
+  return isInstruction(item) && item.opcode == "jmp" &&
+         item.operands.size() == 1 &&
+         item.operands[0].kind == AsmOperandKind::Label;
+}
 
-    if (sameRegister(items[i].operands[0], items[i + 1].operands[0]) &&
-        !referencesRsp(items[i].operands[0])) {
-      items.erase(items.begin() + static_cast<long>(i),
-                  items.begin() + static_cast<long>(i + 2));
-      changed = true;
-      continue;
-    }
-
-    if (canRewritePushPopToMov(items[i], items[i + 1])) {
-      AsmInstruction replacement;
-      replacement.kind = AsmItemKind::Instruction;
-      replacement.opcode = "mov";
-      replacement.width = AsmWidth::Quad;
-      replacement.operands = {items[i].operands[0], items[i + 1].operands[0]};
-      items[i] = std::move(replacement);
-      items.erase(items.begin() + static_cast<long>(i + 1));
-      changed = true;
-      ++i;
-      continue;
-    }
-
-    ++i;
-  }
-  return changed;
+bool isTerminator(const AsmInstruction &item) {
+  return isInstruction(item) && (item.opcode == "jmp" || item.opcode == "ret");
 }
 
 bool removeJumpsToNextLabel(std::vector<AsmInstruction> &items) {
@@ -194,7 +128,6 @@ void optimizeAssembly(std::vector<AsmInstruction> &items) {
   do {
     changed = false;
     changed |= removeRedundantMoves(items);
-    changed |= simplifyPushPop(items);
     changed |= removeJumpsToNextLabel(items);
     changed |= removeUnreachableAfterTerminators(items);
     changed |= removeDuplicateBlanks(items);
