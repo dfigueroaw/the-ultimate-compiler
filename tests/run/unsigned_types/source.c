@@ -12,6 +12,7 @@ int main() {
   unsigned int one;
   unsigned int dividend;
   unsigned int divisor;
+  unsigned long large_mod;
 
   uc = 255;
   uc++;
@@ -29,9 +30,11 @@ int main() {
 
   dividend = ui;
   divisor = 2;
+  large_mod = 5000000000 % 4294967296;
 
   printf("%d %d %u %ld %lld\n", uc, us, ui, ul, ull);
   printf("%d %d %d\n", signed_cmp, unsigned_cmp, mixed_rank_cmp);
   printf("%u %u\n", dividend / divisor, dividend % divisor);
+  printf("%lu\n", large_mod);
   return 0;
 }
