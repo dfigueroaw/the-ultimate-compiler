@@ -134,6 +134,22 @@ std::uint64_t maskForShift(unsigned shift) {
   return (std::uint64_t{1} << shift) - 1;
 }
 
+void emitMask(AsmBuilder &assembly, AsmWidth width, std::uint64_t mask) {
+  if (width == AsmWidth::Quad &&
+      mask > static_cast<std::uint64_t>(
+                 std::numeric_limits<std::int32_t>::max())) {
+    assembly.mov(AsmWidth::Quad, imm(static_cast<long>(mask)),
+                 asmReg(AsmRegister::RCX));
+    assembly.instr("and", width,
+                   {asmReg(AsmRegister::RCX), asmReg(AsmRegister::RAX, width)});
+    return;
+  }
+
+  assembly.instr("and", width,
+                 {imm(static_cast<long>(mask)),
+                  asmReg(AsmRegister::RAX, width)});
+}
+
 AbiInfo classifyAbi(
     const TypeInfo &type,
     const std::unordered_map<std::string, StructInfo> &structInfos) {
@@ -971,9 +987,7 @@ int GenCodeVisitor::visit(CompoundAssignmentStatement *stm) {
     case MOD_OP:
       if (resultType.isUnsignedInteger()) {
         if (const auto shift = unsignedPowerOfTwoShift(stm->expression.get())) {
-          assembly.instr("and", width,
-                         {imm(static_cast<long>(maskForShift(*shift))),
-                          asmReg(AsmRegister::RAX, width)});
+          emitMask(assembly, width, maskForShift(*shift));
         } else {
           prepareDivisionDividend(assembly, width, true);
           emitDivide(assembly, width, asmReg(AsmRegister::RCX, width), true);
@@ -1181,9 +1195,7 @@ int GenCodeVisitor::visit(BinaryExpression *exp) {
   case MOD_OP:
     if (semantics.result.isUnsignedInteger()) {
       if (const auto shift = unsignedPowerOfTwoShift(exp->right.get())) {
-        assembly.instr("and", scalarWidth,
-                       {imm(static_cast<long>(maskForShift(*shift))),
-                        asmReg(AsmRegister::RAX, scalarWidth)});
+        emitMask(assembly, scalarWidth, maskForShift(*shift));
       } else {
         prepareDivisionDividend(assembly, scalarWidth, true);
         emitDivide(assembly, scalarWidth,
