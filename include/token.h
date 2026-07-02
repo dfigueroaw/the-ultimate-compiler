@@ -70,6 +70,7 @@ public:
     CHAR,
     SHORT,
     LONG,
+    SIGNED,
     UNSIGNED,
 
     RETURN,

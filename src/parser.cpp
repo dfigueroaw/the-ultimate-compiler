@@ -126,6 +126,24 @@ std::unique_ptr<VariableDeclaration> Parser::parseVariableDeclaration() {
 std::string Parser::parseTypeSpecifier() {
   if (match(Token::STRUCT))
     return "struct " + expectIdentifier("nombre de estructura");
+  if (match(Token::SIGNED)) {
+    if (match(Token::CHAR))
+      return "char";
+    if (match(Token::SHORT)) {
+      match(Token::INT);
+      return "short";
+    }
+    if (match(Token::LONG)) {
+      if (match(Token::LONG)) {
+        match(Token::INT);
+        return "long long";
+      }
+      match(Token::INT);
+      return "long";
+    }
+    match(Token::INT);
+    return "int";
+  }
   if (match(Token::UNSIGNED)) {
     if (match(Token::CHAR))
       return "unsigned char";
@@ -169,7 +187,7 @@ bool Parser::isTypeSpecifierStart() const {
   return current->type == Token::STRUCT || current->type == Token::INT ||
          current->type == Token::VOID || current->type == Token::CHAR ||
          current->type == Token::SHORT || current->type == Token::LONG ||
-         current->type == Token::UNSIGNED;
+         current->type == Token::SIGNED || current->type == Token::UNSIGNED;
 }
 
 Declarator Parser::parseDeclarator() {

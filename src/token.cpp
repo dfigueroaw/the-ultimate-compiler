@@ -121,6 +121,8 @@ std::string Token::typeName(Type t) {
     return "'short'";
   case LONG:
     return "'long'";
+  case SIGNED:
+    return "'signed'";
   case UNSIGNED:
     return "'unsigned'";
   case RETURN:

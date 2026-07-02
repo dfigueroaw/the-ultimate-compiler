@@ -33,6 +33,7 @@ std::optional<Token::Type> keywordType(const std::string &lexeme) {
       {"char", Token::CHAR},
       {"short", Token::SHORT},
       {"long", Token::LONG},
+      {"signed", Token::SIGNED},
       {"unsigned", Token::UNSIGNED},
       {"return", Token::RETURN},
   };
