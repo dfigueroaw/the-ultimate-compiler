@@ -1,4 +1,5 @@
 #include "../include/dead_code_eliminator.h"
+#include "../include/asm_peephole.h"
 #include "../include/expression_optimizer.h"
 #include "../include/visitor_utils.h"
 
@@ -211,6 +212,7 @@ int GenCodeVisitor::generate(Program *program) {
   functionVariadicFlags = semantics.functionVariadic;
   collectStringLiterals(program);
   program->accept(this);
+  optimizeAssembly(assembly.programItems());
   assembly.write(out);
   return 0;
 }

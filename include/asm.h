@@ -55,6 +55,8 @@ private:
   std::vector<AsmInstruction> items;
 
 public:
+  std::vector<AsmInstruction> &programItems();
+  const std::vector<AsmInstruction> &programItems() const;
   void blank();
   void directive(std::string text);
   void label(std::string name);

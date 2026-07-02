@@ -226,6 +226,12 @@ void AsmBuilder::blank() {
   items.push_back(std::move(item));
 }
 
+std::vector<AsmInstruction> &AsmBuilder::programItems() { return items; }
+
+const std::vector<AsmInstruction> &AsmBuilder::programItems() const {
+  return items;
+}
+
 void AsmBuilder::directive(std::string text) {
   AsmInstruction item;
   item.kind = AsmItemKind::Directive;
