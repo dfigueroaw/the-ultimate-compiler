@@ -270,8 +270,13 @@ private:
       if (unary->op == NOT_OP)
         return ConstantValue{inner->bits == 0 ? 1U : 0U, resultType};
       if (unary->op == NEG_OP) {
-        if (!resultType.isUnsignedInteger() &&
-            signedValue(*inner) == std::numeric_limits<std::int64_t>::min())
+        if (resultType.isUnsignedInteger())
+          return ConstantValue{
+              convertBits(std::uint64_t{0} -
+                              convertBits(inner->bits, resultType),
+                          resultType),
+              resultType};
+        if (signedValue(*inner) == signedMin(resultType))
           return std::nullopt;
         return ConstantValue{
             convertBits(static_cast<std::uint64_t>(-signedValue(*inner)),
@@ -334,6 +339,23 @@ private:
     if ((masked & sign) == 0)
       return static_cast<std::int64_t>(masked);
     return static_cast<std::int64_t>(masked | ~maskForWidth(bits));
+  }
+
+  std::int64_t signedMax(const TypeInfo &type) const {
+    const std::size_t bits = integerWidthBits(type);
+    if (bits >= 64)
+      return std::numeric_limits<std::int64_t>::max();
+    return static_cast<std::int64_t>((std::uint64_t{1} << (bits - 1)) - 1);
+  }
+
+  std::int64_t signedMin(const TypeInfo &type) const {
+    if (integerWidthBits(type) >= 64)
+      return std::numeric_limits<std::int64_t>::min();
+    return -signedMax(type) - 1;
+  }
+
+  bool signedFits(std::int64_t value, const TypeInfo &type) const {
+    return value >= signedMin(type) && value <= signedMax(type);
   }
 
   ConstantValue converted(ConstantValue value, const TypeInfo &type) const {
@@ -407,11 +429,15 @@ private:
         return makeResult(leftUnsigned + rightUnsigned);
       if (__builtin_add_overflow(leftSigned, rightSigned, &signedResult))
         return std::nullopt;
+      if (!signedFits(signedResult, resultType))
+        return std::nullopt;
       return makeResult(static_cast<std::uint64_t>(signedResult));
     case MINUS_OP:
       if (isUnsigned)
         return makeResult(leftUnsigned - rightUnsigned);
       if (__builtin_sub_overflow(leftSigned, rightSigned, &signedResult))
+        return std::nullopt;
+      if (!signedFits(signedResult, resultType))
         return std::nullopt;
       return makeResult(static_cast<std::uint64_t>(signedResult));
     case MUL_OP:
@@ -419,13 +445,14 @@ private:
         return makeResult(leftUnsigned * rightUnsigned);
       if (__builtin_mul_overflow(leftSigned, rightSigned, &signedResult))
         return std::nullopt;
+      if (!signedFits(signedResult, resultType))
+        return std::nullopt;
       return makeResult(static_cast<std::uint64_t>(signedResult));
     case DIV_OP:
       if ((isUnsigned && rightUnsigned == 0) ||
           (!isUnsigned &&
            (rightSigned == 0 ||
-            (leftSigned == std::numeric_limits<std::int64_t>::min() &&
-             rightSigned == -1))))
+            (leftSigned == signedMin(operandType) && rightSigned == -1))))
         return std::nullopt;
       return isUnsigned ? makeResult(leftUnsigned / rightUnsigned)
                         : makeResult(static_cast<std::uint64_t>(leftSigned /
@@ -434,8 +461,7 @@ private:
       if ((isUnsigned && rightUnsigned == 0) ||
           (!isUnsigned &&
            (rightSigned == 0 ||
-            (leftSigned == std::numeric_limits<std::int64_t>::min() &&
-             rightSigned == -1))))
+            (leftSigned == signedMin(operandType) && rightSigned == -1))))
         return std::nullopt;
       return isUnsigned ? makeResult(leftUnsigned % rightUnsigned)
                         : makeResult(static_cast<std::uint64_t>(leftSigned %
