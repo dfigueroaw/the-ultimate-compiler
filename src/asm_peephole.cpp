@@ -43,6 +43,12 @@ bool isMov(const AsmInstruction &item) {
          item.operands.size() == 2;
 }
 
+bool isTrueNoOpRegisterMove(const AsmInstruction &item) {
+  if (!isMov(item) || !sameRegister(item.operands[0], item.operands[1]))
+    return false;
+  return item.width != AsmWidth::Long;
+}
+
 bool isPush(const AsmInstruction &item) {
   return isInstruction(item) && item.opcode == "push" &&
          item.operands.size() == 1;
@@ -67,6 +73,8 @@ bool canRewritePushPopToMov(const AsmInstruction &push,
                             const AsmInstruction &pop) {
   const auto &src = push.operands[0];
   const auto &dst = pop.operands[0];
+  if (!isTypedRegister(src))
+    return false;
   if (!isTypedRegister(dst))
     return false;
   if (referencesRsp(src) || referencesRsp(dst))
@@ -84,8 +92,7 @@ std::size_t nextNonBlank(const std::vector<AsmInstruction> &items,
 bool removeRedundantMoves(std::vector<AsmInstruction> &items) {
   const auto original = items.size();
   items.erase(std::remove_if(items.begin(), items.end(), [](const auto &item) {
-                return isMov(item) && sameRegister(item.operands[0],
-                                                   item.operands[1]);
+                return isTrueNoOpRegisterMove(item);
               }),
               items.end());
   return items.size() != original;
@@ -99,7 +106,8 @@ bool simplifyPushPop(std::vector<AsmInstruction> &items) {
       continue;
     }
 
-    if (sameRegister(items[i].operands[0], items[i + 1].operands[0])) {
+    if (sameRegister(items[i].operands[0], items[i + 1].operands[0]) &&
+        !referencesRsp(items[i].operands[0])) {
       items.erase(items.begin() + static_cast<long>(i),
                   items.begin() + static_cast<long>(i + 2));
       changed = true;
