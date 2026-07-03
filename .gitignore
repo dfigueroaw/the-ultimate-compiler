@@ -22,3 +22,20 @@ __pycache__/
 *.swp
 *.swo
 *~
+
+# Entorno virtual de Python
+benchmarks/venv/
+venv/
+
+# Resultados y artefactos generados por los scripts de benchmark
+benchmarks/work/
+benchmarks/results/
+benchmarks/plots/
+
+# Cachés de Python
+__pycache__/
+*.pyc
+
+# Binario compilado del proyecto
+build/
+EOF
