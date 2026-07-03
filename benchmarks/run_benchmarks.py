@@ -1,36 +1,45 @@
 #!/usr/bin/env python3
 """
-run_benchmarks.py — Compara tu_compilador vs gcc vs clang
-en tiempo de compilación, tiempo de ejecución y tamaño de binario.
+run_benchmarks.py — Compara the-ultimate-compiler vs gcc vs clang
+(niveles -O1, -O2, -O3) en tiempo de compilación, tiempo de ejecución
+y tamaño de binario.
 """
 import subprocess
 import time
 import statistics
 import json
 import csv
-import os
+import shutil
 from pathlib import Path
 from dataclasses import dataclass, asdict
 
 # ---------- Configuración ----------
 ROOT = Path(__file__).resolve().parent
-COMPILADOR = ROOT.parent / "build" / "compilador"   # ajusta el path
+COMPILADOR = ROOT.parent / "build" / "compilador"
 PROGRAMS_DIR = ROOT / "programs"
 RESULTS_DIR = ROOT / "results"
-WORK_DIR = ROOT / "work"          # binarios/asm temporales
-REPETICIONES = 15                 # repeticiones por medición
-TIMEOUT = 60                      # segundos, evita colgar el benchmark
+WORK_DIR = ROOT / "work"
+PLOTS_DIR = ROOT / "plots"
+REPETICIONES = 15
+TIMEOUT = 60
+
+NIVELES_OPT = ["O1", "O2", "O3"]
+
+# Carpetas de programas que pertenecen a los microbenchmarks de optimización,
+# no al benchmark comparativo principal.
+EXCLUIR_DIRS = {"opt_constant_folding", "opt_dead_code"}
 
 RESULTS_DIR.mkdir(exist_ok=True)
 WORK_DIR.mkdir(exist_ok=True)
+PLOTS_DIR.mkdir(exist_ok=True)
 
 
 @dataclass
 class Resultado:
     programa: str
-    tamano: str            # "small" / "large"
-    compilador: str        # "tu_compilador" / "gcc" / "clang"
-    nivel_opt: str         # "O0" / "O1"
+    tamano: str
+    compilador: str
+    nivel_opt: str
     tiempo_compilacion: float
     tamano_binario: int
     tiempos_ejecucion: list
@@ -40,6 +49,8 @@ class Resultado:
 
 
 def correr(cmd, timeout=TIMEOUT):
+    if shutil.which(cmd[0]) is None:
+        return None, None
     inicio = time.perf_counter()
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
@@ -49,8 +60,8 @@ def correr(cmd, timeout=TIMEOUT):
     return r, fin - inicio
 
 
-def compilar_tu_compilador(fuente: Path, out_bin: Path):
-    """Devuelve (tiempo_total, ok). Incluye compilador propio + gcc -no-pie."""
+def compilar_propio(fuente: Path, out_bin: Path):
+    """Compilador propio + gcc -no-pie para ensamblar/enlazar."""
     asm_path = out_bin.with_suffix(".s")
     r1, t1 = correr([str(COMPILADOR), str(fuente), "-o", str(asm_path)])
     if r1 is None or r1.returncode != 0:
@@ -83,7 +94,7 @@ def medir_ejecucion(binario: Path, n=REPETICIONES):
     return tiempos
 
 
-def benchmark_uno(programa: str, tamano: str, fuente: Path, compilador: str, nivel: str, fn_compilar):
+def benchmark_uno(programa, tamano, fuente, compilador, nivel, fn_compilar):
     out_bin = WORK_DIR / f"{programa}_{tamano}_{compilador}_{nivel}"
     t_compilacion, ok = fn_compilar(fuente, out_bin)
     if not ok:
@@ -111,37 +122,34 @@ def benchmark_uno(programa: str, tamano: str, fuente: Path, compilador: str, niv
 
 
 def main():
+    if not COMPILADOR.exists():
+        print(f"[ERROR] No se encontró el compilador en {COMPILADOR}")
+        print("Corre 'make' desde la raíz del proyecto primero.")
+        return
+
     resultados = []
     for prog_dir in sorted(PROGRAMS_DIR.iterdir()):
-        if not prog_dir.is_dir():
+        if not prog_dir.is_dir() or prog_dir.name in EXCLUIR_DIRS:
             continue
         programa = prog_dir.name
         for fuente in sorted(prog_dir.glob("*.c")):
-            tamano = fuente.stem  # "small" o "large"
+            tamano = fuente.stem
             print(f"Benchmarking {programa}/{tamano}...")
 
-            configs = [
-            ("the-ultimate-compiler", "default", compilar_tu_compilador),
-            ("gcc", "O0", lambda f, o: compilar_gcc(f, o, "O0")),
-            ("gcc", "O1", lambda f, o: compilar_gcc(f, o, "O1")),
-            ("gcc", "O2", lambda f, o: compilar_gcc(f, o, "O2")),
-            ("gcc", "O3", lambda f, o: compilar_gcc(f, o, "O3")),
-            ("clang", "O0", lambda f, o: compilar_clang(f, o, "O0")),
-            ("clang", "O1", lambda f, o: compilar_clang(f, o, "O1")),
-            ("clang", "O2", lambda f, o: compilar_clang(f, o, "O2")),
-            ("clang", "O3", lambda f, o: compilar_clang(f, o, "O3")),
-        ]
+            configs = [("the-ultimate-compiler", "default", compilar_propio)]
+            for nivel in NIVELES_OPT:
+                configs.append(("gcc", nivel, lambda f, o, n=nivel: compilar_gcc(f, o, n)))
+            for nivel in NIVELES_OPT:
+                configs.append(("clang", nivel, lambda f, o, n=nivel: compilar_clang(f, o, n)))
 
             for compilador, nivel, fn in configs:
                 res = benchmark_uno(programa, tamano, fuente, compilador, nivel, fn)
                 if res:
                     resultados.append(res)
 
-    # Guardar resultados crudos en JSON
     with open(RESULTS_DIR / "resultados.json", "w") as f:
         json.dump([asdict(r) for r in resultados], f, indent=2)
 
-    # Guardar resumen en CSV (para pandas/excel)
     with open(RESULTS_DIR / "resumen.csv", "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([

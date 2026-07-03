@@ -29,7 +29,7 @@ int main(void) {
         if (buscar(arr, 0, 99999, i) != -1) {
             encontrados = encontrados + 1;
         }
-        i = i + 100;
+        i = i + 1;
     }
     printf("%d\n", encontrados);
     return 0;

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-medir_optimizaciones.py — Mide el efecto de los optimizadores propios
-(constant folding y dead code elimination) comparando variantes
-"foldable" (el optimizador puede actuar) vs "opaque" (no puede).
+medir_optimizaciones.py — Mide el efecto de las optimizaciones propias
+a nivel AST (constant folding y dead code elimination), comparando
+variantes "foldable" (el optimizador puede actuar) vs "opaque" (no puede),
+usando siempre el mismo binario del compilador.
 """
 import subprocess
 import time
@@ -13,12 +14,12 @@ import shutil
 from pathlib import Path
 from dataclasses import dataclass, asdict
 
-# ---------- Configuración ----------
 ROOT = Path(__file__).resolve().parent
 COMPILADOR = ROOT.parent / "build" / "compilador"
 PROGRAMS_DIR = ROOT / "programs"
 RESULTS_DIR = ROOT / "results"
 WORK_DIR = ROOT / "work"
+PLOTS_DIR = ROOT / "plots"
 REPETICIONES = 15
 TIMEOUT = 60
 
@@ -27,6 +28,7 @@ VARIANTES = ["foldable", "opaque"]
 
 RESULTS_DIR.mkdir(exist_ok=True)
 WORK_DIR.mkdir(exist_ok=True)
+PLOTS_DIR.mkdir(exist_ok=True)
 
 
 @dataclass
@@ -55,7 +57,6 @@ def correr(cmd, timeout=TIMEOUT):
 
 
 def compilar(fuente: Path, asm_path: Path, out_bin: Path):
-    """Compila con tu_compilador + gcc -no-pie. Devuelve (tiempo_total, ok)."""
     r1, t1 = correr([str(COMPILADOR), str(fuente), "-o", str(asm_path)])
     if r1 is None or r1.returncode != 0:
         return None, False
@@ -128,11 +129,9 @@ def main():
                       f"mediana ejecución {res.mediana_ejecucion*1000:.4f} ms "
                       f"(stdev {res.stdev_ejecucion*1000:.4f} ms)")
 
-    # Guardar crudo en JSON
     with open(RESULTS_DIR / "optimizaciones.json", "w") as f:
         json.dump([asdict(r) for r in resultados], f, indent=2)
 
-    # Guardar resumen en CSV
     with open(RESULTS_DIR / "optimizaciones.csv", "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([
@@ -148,20 +147,17 @@ def main():
                 f"{r.stdev_ejecucion:.6f}"
             ])
 
-    # Resumen comparativo foldable vs opaque, por caso
     print("\n=== Resumen del efecto de la optimización ===")
     for caso in CASOS:
         fold = next((r for r in resultados if r.caso == caso and r.variante == "foldable"), None)
         opaq = next((r for r in resultados if r.caso == caso and r.variante == "opaque"), None)
         if fold and opaq:
-            delta_asm = opaq.lineas_asm - fold.lineas_asm
-            delta_tiempo = opaq.mediana_ejecucion - fold.mediana_ejecucion
             print(f"{caso}:")
             print(f"  líneas .s   -> foldable {fold.lineas_asm}, opaque {opaq.lineas_asm} "
-                  f"(diferencia: {delta_asm} líneas)")
+                  f"(diferencia: {opaq.lineas_asm - fold.lineas_asm} líneas)")
             print(f"  ejecución   -> foldable {fold.mediana_ejecucion*1000:.4f} ms, "
                   f"opaque {opaq.mediana_ejecucion*1000:.4f} ms "
-                  f"(diferencia: {delta_tiempo*1000:.4f} ms)")
+                  f"(diferencia: {(opaq.mediana_ejecucion - fold.mediana_ejecucion)*1000:.4f} ms)")
 
     print(f"\nResultados guardados en {RESULTS_DIR}/optimizaciones.csv y optimizaciones.json")
 

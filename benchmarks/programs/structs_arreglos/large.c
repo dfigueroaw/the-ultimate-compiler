@@ -7,7 +7,7 @@ struct Punto {
 
 int main(void) {
     struct Punto puntos[1000];
-    int i;
+    int i, idx;
     long suma;
     i = 0;
     while (i < 1000) {
@@ -17,8 +17,9 @@ int main(void) {
     }
     suma = 0;
     i = 0;
-    while (i < 1000) {
-        suma = suma + puntos[i].x + puntos[i].y;
+    while (i < 10000000) {
+        idx = i % 1000;
+        suma = suma + puntos[idx].x + puntos[idx].y;
         i = i + 1;
     }
     printf("%ld\n", suma);

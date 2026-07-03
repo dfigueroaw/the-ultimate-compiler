@@ -5,7 +5,7 @@ int main(void) {
     long total;
     i = 0;
     total = 0;
-    while (i < 500) {
+    while (i < 5000000) {
         total = total + i * 2 - 1;
         i = i + 1;
     }

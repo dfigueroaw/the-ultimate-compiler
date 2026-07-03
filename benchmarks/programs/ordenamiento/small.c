@@ -1,9 +1,9 @@
 int printf(char *, ...);
 
 int main(void) {
-    int arr[50];
+    int arr[800];
     int i, j, tmp, n;
-    n = 50;
+    n = 800;
     i = 0;
     while (i < n) {
         arr[i] = n - i;

@@ -16,20 +16,20 @@ int buscar(int *arr, int lo, int hi, int objetivo) {
 }
 
 int main(void) {
-    int arr[100];
+    int arr[5000];
     int i, encontrados;
     i = 0;
-    while (i < 100) {
+    while (i < 5000) {
         arr[i] = i;
         i = i + 1;
     }
     encontrados = 0;
     i = 0;
-    while (i < 100) {
-        if (buscar(arr, 0, 99, i) != -1) {
+    while (i < 5000) {
+        if (buscar(arr, 0, 4999, i) != -1) {
             encontrados = encontrados + 1;
         }
-        i = i + 100;
+        i = i + 1;
     }
     printf("%d\n", encontrados);
     return 0;

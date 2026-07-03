@@ -16,7 +16,7 @@ int main(void) {
     int i, resultado;
     resultado = 0;
     i = 0;
-    while (i < 20000) {
+    while (i < 200000000) {
         if (0) {
             resultado = resultado + trabajo_pesado(i);
         }
