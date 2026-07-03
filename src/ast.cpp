@@ -21,8 +21,8 @@ IdentifierExpression::IdentifierExpression(std::string v)
     : value(std::move(v)) {}
 
 SubscriptExpression::SubscriptExpression(
-    std::unique_ptr<Expression> b, std::vector<std::unique_ptr<Expression>> idx)
-    : base(std::move(b)), indices(std::move(idx)) {}
+    std::unique_ptr<Expression> b, std::unique_ptr<Expression> idx)
+    : base(std::move(b)), index(std::move(idx)) {}
 
 DereferenceExpression::DereferenceExpression(std::unique_ptr<Expression> o)
     : operand(std::move(o)) {}

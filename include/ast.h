@@ -106,9 +106,9 @@ public:
 class SubscriptExpression : public Expression {
 public:
   std::unique_ptr<Expression> base;
-  std::vector<std::unique_ptr<Expression>> indices;
+  std::unique_ptr<Expression> index;
   SubscriptExpression(std::unique_ptr<Expression> base,
-                      std::vector<std::unique_ptr<Expression>> indices);
+                      std::unique_ptr<Expression> index);
   int accept(Visitor *visitor) override;
   ~SubscriptExpression() override = default;
 };

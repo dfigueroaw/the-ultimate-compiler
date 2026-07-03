@@ -152,17 +152,15 @@ TypeInfo TypeResolver::lvalue(Expression *exp) const {
     } else {
       result = expression(subscript->base.get()).decayed();
     }
-    for (auto &index : subscript->indices) {
-      const auto indexType = expression(index.get()).decayed();
-      if (!isScalarInteger(indexType))
-        throw std::runtime_error(
-            "[TypeChecker] Índice de arreglo debe ser entero");
-      if (result.kind == TypeKind::Array || result.kind == TypeKind::Pointer) {
-        result = pointedType(result);
-      } else {
-        throw std::runtime_error(
-            "[TypeChecker] Demasiados índices para expresión");
-      }
+    const auto indexType = expression(subscript->index.get()).decayed();
+    if (!isScalarInteger(indexType))
+      throw std::runtime_error(
+          "[TypeChecker] Índice de arreglo debe ser entero");
+    if (result.kind == TypeKind::Array || result.kind == TypeKind::Pointer) {
+      result = pointedType(result);
+    } else {
+      throw std::runtime_error(
+          "[TypeChecker] Demasiados índices para expresión");
     }
     return result;
   }

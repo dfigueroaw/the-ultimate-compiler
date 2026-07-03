@@ -223,7 +223,7 @@ enum class LValueKind { Invalid, Id, Subscript, Deref, Field };
 struct LValue {
   LValueKind kind = LValueKind::Invalid;
   std::string name;
-  std::vector<Expression *> indices;
+  Expression *index = nullptr;
   Expression *expression = nullptr;
   std::string field;
 };

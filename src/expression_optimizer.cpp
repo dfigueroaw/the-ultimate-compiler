@@ -160,8 +160,7 @@ private:
     } else if (auto *subscript =
                    dynamic_cast<SubscriptExpression *>(expression.get())) {
       foldExpression(subscript->base);
-      for (auto &index : subscript->indices)
-        foldExpression(index);
+      foldExpression(subscript->index);
       return;
     } else if (auto *deref =
                    dynamic_cast<DereferenceExpression *>(expression.get())) {

@@ -369,11 +369,10 @@ std::unique_ptr<Expression>
 Parser::parsePostfix(std::unique_ptr<Expression> expression) {
   while (true) {
     if (match(Token::LBRACKET)) {
-      std::vector<std::unique_ptr<Expression>> indices;
-      indices.push_back(parseCE());
+      auto idx = parseCE();
       expect(Token::RBRACKET);
       expression = std::make_unique<SubscriptExpression>(std::move(expression),
-                                                         std::move(indices));
+                                                         std::move(idx));
       continue;
     }
     if (match(Token::DOT) || match(Token::ARROW)) {

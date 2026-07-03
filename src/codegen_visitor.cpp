@@ -307,8 +307,7 @@ void GenCodeVisitor::collectStringLiterals(Expression *expression) {
   } else if (auto *subscript =
                  dynamic_cast<SubscriptExpression *>(expression)) {
     collectStringLiterals(subscript->base.get());
-    for (auto &index : subscript->indices)
-      collectStringLiterals(index.get());
+    collectStringLiterals(subscript->index.get());
   } else if (auto *deref = dynamic_cast<DereferenceExpression *>(expression)) {
     collectStringLiterals(deref->operand.get());
   } else if (auto *address = dynamic_cast<AddressExpression *>(expression)) {
@@ -520,8 +519,7 @@ void GenCodeVisitor::emitExpressionAddress(Expression *exp,
     LValue lv;
     lv.kind = LValueKind::Subscript;
     lv.expression = subscript;
-    for (auto &index : subscript->indices)
-      lv.indices.push_back(index.get());
+    lv.index = subscript->index.get();
     emitSubscriptAddress(lv);
     if (reg != "%rax")
       assembly.mov(AsmWidth::Quad, asmReg(AsmRegister::RAX), regText(reg));
@@ -562,24 +560,12 @@ void GenCodeVisitor::emitSubscriptAddress(const LValue &lv) {
     throw std::runtime_error("[CodeGen] Subscript inválido");
 
   TypeInfo baseType = lvalueInfo(subscript->base.get());
-  const std::vector<std::size_t> dimensions = baseType.dimensions();
 
-  assembly.mov(AsmWidth::Quad, imm(0), asmReg(AsmRegister::R11));
-  for (std::size_t i = 0; i < lv.indices.size(); ++i) {
-    if (i > 0) {
-      const std::size_t dimension = i < dimensions.size() ? dimensions[i] : 1;
-      assembly.imul(AsmWidth::Quad, imm(static_cast<long>(dimension)),
-                    asmReg(AsmRegister::R11));
-    }
-    emitPush(asmReg(AsmRegister::R11));
-    lv.indices[i]->accept(this);
-    emitPop(asmReg(AsmRegister::R11));
-    assembly.add(AsmWidth::Quad, asmReg(AsmRegister::RAX),
-                 asmReg(AsmRegister::R11));
-  }
-  TypeInfo elementType = baseType;
-  if (!lv.indices.empty())
-    elementType = lvalueInfo(lv.expression);
+  lv.index->accept(this);
+  assembly.mov(AsmWidth::Quad, asmReg(AsmRegister::RAX),
+               asmReg(AsmRegister::R11));
+
+  TypeInfo elementType = lvalueInfo(lv.expression);
   const std::size_t elementSize =
       std::max<std::size_t>(typeSize(elementType), 1);
   if (elementSize != 1)
@@ -832,16 +818,13 @@ int GenCodeVisitor::visit(SubscriptExpression *exp) {
   if (lvalueTarget) {
     lvalueTarget->kind = LValueKind::Subscript;
     lvalueTarget->expression = exp;
-    lvalueTarget->indices.clear();
-    for (auto &index : exp->indices)
-      lvalueTarget->indices.push_back(index.get());
+    lvalueTarget->index = exp->index.get();
     return 0;
   }
   LValue lv;
   lv.kind = LValueKind::Subscript;
   lv.expression = exp;
-  for (auto &index : exp->indices)
-    lv.indices.push_back(index.get());
+  lv.index = exp->index.get();
   emitSubscriptAddress(lv);
   const TypeInfo target = lvalueInfo(exp);
   if (target.isArray())
