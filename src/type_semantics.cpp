@@ -11,8 +11,6 @@ bool isUnsignedInteger(const TypeInfo &type) {
 }
 
 TypeInfo integerLiteralType(const NumberExpression *number) {
-  if (number->typeName)
-    return TypeInfo{*number->typeName, 0, {}};
   const auto maxInt = static_cast<std::int64_t>(
       (std::uint64_t{1} << (targetInfo().intSize * 8 - 1)) - 1);
   if (number->value <= maxInt)

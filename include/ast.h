@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <list>
 #include <memory>
-#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -83,9 +82,7 @@ public:
 class NumberExpression : public Expression {
 public:
   std::int64_t value;
-  std::optional<std::string> typeName;
   explicit NumberExpression(std::int64_t v);
-  NumberExpression(std::int64_t v, std::string typeName);
   int accept(Visitor *visitor) override;
   ~NumberExpression() override = default;
 };

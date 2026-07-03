@@ -197,8 +197,7 @@ private:
         value->type.isUnsignedInteger()
             ? static_cast<std::int64_t>(value->bits)
             : signedValue(*value);
-    auto replacement = std::make_unique<NumberExpression>(
-        replacementValue, value->type.display());
+    auto replacement = std::make_unique<NumberExpression>(replacementValue);
     if (!sameExpressionType(expression.get(), replacement.get()))
       return;
     expression = std::move(replacement);

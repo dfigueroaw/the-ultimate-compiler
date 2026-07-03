@@ -15,9 +15,6 @@ IncDecExpression::IncDecExpression(std::unique_ptr<Expression> o, IncDecOp op,
 
 NumberExpression::NumberExpression(std::int64_t v) : value(v) {}
 
-NumberExpression::NumberExpression(std::int64_t v, std::string type)
-    : value(v), typeName(std::move(type)) {}
-
 StringExpression::StringExpression(std::string v) : value(std::move(v)) {}
 
 IdentifierExpression::IdentifierExpression(std::string v)
