@@ -343,6 +343,10 @@ bool TypeInfo::isLongObject() const { return kind == TypeKind::Long; }
 
 bool TypeInfo::isLongLongObject() const { return kind == TypeKind::LongLong; }
 
+bool TypeInfo::isPointer() const { return kind == TypeKind::Pointer; }
+
+bool TypeInfo::isArray() const { return kind == TypeKind::Array; }
+
 const TypeInfo &TypeInfo::pointee() const {
   if (!element)
     throw std::runtime_error("[Type] Tipo sin elemento");

@@ -69,8 +69,8 @@ struct TypeInfo {
   static TypeInfo structure(std::string name);
   static TypeInfo pointerTo(TypeInfo pointee);
   static TypeInfo arrayOf(std::size_t size, TypeInfo element);
-  bool isPointer() const { return kind == TypeKind::Pointer; }
-  bool isArray() const { return kind == TypeKind::Array; }
+  bool isPointer() const;
+  bool isArray() const;
   bool isScalarInteger() const;
   bool isUnsignedInteger() const;
   bool isVoidObject() const;
